@@ -1,0 +1,19 @@
+ros-rolling-ros2-snapshot (0.0.3-1bookworm) bookworm; urgency=high
+
+  * Use rclpy.endpoint_info instead of rclpy.topic_endpoint_info in rolling
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Sat, 21 Feb 2026 05:00:00 -0000
+
+ros-rolling-ros2-snapshot (0.0.2-1bookworm) bookworm; urgency=high
+
+  * fix package.xml
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Sat, 21 Feb 2026 05:00:00 -0000
+
+ros-rolling-ros2-snapshot (0.0.1-1bookworm) bookworm; urgency=high
+
+  * Original release
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Thu, 29 Jan 2026 05:00:00 -0000
+
+
