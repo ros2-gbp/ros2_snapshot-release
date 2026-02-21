@@ -46,7 +46,7 @@ write_version_file(VERSION, HERE / "VERSION")
 
 setup(
     name=PACKAGE_NAME,
-    version='0.0.2',
+    version='0.0.3',
     packages=find_packages(),
     data_files=[
         (
