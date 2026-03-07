@@ -26,7 +26,7 @@ from core.utilities import filters
 
 from pydantic.error_wrappers import ValidationError
 
-from rclpy.endpoint_info import EndpointTypeEnum
+from rclpy.topic_endpoint_info import TopicEndpointTypeEnum
 
 from snapshot.builders.base_builders import _EntityBuilder
 
@@ -102,14 +102,10 @@ class TopicBuilder(_EntityBuilder):
     @property
     def endpoint_type(self):
         """Get endpoint type."""
-        if self._endpoint_type == EndpointTypeEnum.PUBLISHER:
+        if self._endpoint_type == TopicEndpointTypeEnum.PUBLISHER:
             return "PUBLISHER"
-        elif self._endpoint_type == EndpointTypeEnum.SUBSCRIPTION:
+        elif self._endpoint_type == TopicEndpointTypeEnum.SUBSCRIPTION:
             return "SUBSCRIPTION"
-        elif self._endpoint_type == EndpointTypeEnum.CLIENT:
-            return "CLIENT"
-        elif self._endpoint_type == EndpointTypeEnum.SERVER:
-            return "SERVER"
         else:
             return "UNKNOWN"
 
