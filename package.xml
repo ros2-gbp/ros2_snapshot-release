@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>ros2_snapshot</name>
-  <version>0.0.5</version>
+  <version>0.0.6</version>
   <description>ROS2 Snapshot - contains workspace modeler and snapshot tools</description>
 
   <maintainer email="robotics@cnu.edu">CNU Robotics CHRISLab</maintainer>
@@ -17,7 +17,6 @@
   <exec_depend>ros2param</exec_depend>
   <exec_depend>ros2pkg</exec_depend>
   <exec_depend>ros2service</exec_depend>
-  <exec_depend>python3-apt</exec_depend>
   <exec_depend>python3-graphviz</exec_depend>
   <exec_depend>python3-psutil</exec_depend>
   <exec_depend>python3-pydantic</exec_depend>

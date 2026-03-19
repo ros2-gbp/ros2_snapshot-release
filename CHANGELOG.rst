@@ -2,6 +2,11 @@
 Changelog for ros2_snapshot
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.0.6 (2026-03-19)
+------------------
+* Update live test for build farm
+* Make workspace package versioning portable
+
 0.0.5 (2026-03-19)
 ------------------
 * Restore multi-distro snapshot compatibility
