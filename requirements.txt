@@ -2,5 +2,6 @@
 # NOTE: Python apt module may require sudo apt install python-apt
 graphviz >= 0.14
 pydantic >= 1.10.12
+psutil >= 5.0
 pytest >= 7.0
 PyYAML >= 5.3
