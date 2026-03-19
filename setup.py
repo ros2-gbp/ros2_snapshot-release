@@ -46,7 +46,7 @@ write_version_file(VERSION, HERE / "VERSION")
 
 setup(
     name=PACKAGE_NAME,
-    version='0.0.3',
+    version="0.0.6",
     packages=find_packages(),
     data_files=[
         (
@@ -60,6 +60,8 @@ setup(
         "setuptools",
         "graphviz",
         "pydantic",
+        "psutil",
+        "PyYAML",
     ],
     zip_safe=True,
     author="CNU Robotics CHRISLab",
@@ -77,8 +79,8 @@ setup(
     license="Apache 2.0",
     entry_points={
         "console_scripts": [
-            "running = snapshot.snapshot:main",
-            "workspace = workspace_modeler.workspace_modeler:main",
+            "running = ros2_snapshot.snapshot.snapshot:main",
+            "workspace = ros2_snapshot.workspace_modeler.workspace_modeler:main",
         ],
     },
     tests_require=["pytest"],

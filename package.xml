@@ -1,18 +1,29 @@
 <?xml version="1.0"?>
 <package format="2">
   <name>ros2_snapshot</name>
-  <version>0.0.3</version>
+  <version>0.0.6</version>
   <description>ROS2 Snapshot - contains workspace modeler and snapshot tools</description>
 
   <maintainer email="robotics@cnu.edu">CNU Robotics CHRISLab</maintainer>
   <author email="andrew.farney.22@cnu.edu">Andrew Farney</author>
-  <license>Apache 2.0</license>
+  <license>Apache-2.0</license>
 
-  <exec_depend>ros2pkg</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>graphviz</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>ros2cli</exec_depend>
+  <exec_depend>ros2component</exec_depend>
+  <exec_depend>ros2node</exec_depend>
+  <exec_depend>ros2param</exec_depend>
+  <exec_depend>ros2pkg</exec_depend>
+  <exec_depend>ros2service</exec_depend>
+  <exec_depend>python3-graphviz</exec_depend>
+  <exec_depend>python3-psutil</exec_depend>
   <exec_depend>python3-pydantic</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
+  <test_depend>demo_nodes_py</test_depend>
 
   <export>
     <build_type>ament_python</build_type>
