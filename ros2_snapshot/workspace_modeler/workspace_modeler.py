@@ -28,7 +28,10 @@ import xml.etree.ElementTree as ET
 from ament_index_python import get_packages_with_prefixes
 from ament_index_python.packages import get_package_share_directory
 
-import apt
+try:
+    import apt
+except ImportError:
+    apt = None
 
 from ros2_snapshot.core.ros_model import BankType, ROSModel
 from ros2_snapshot.core.specifications.node_specification import NodeSpecificationBank
@@ -66,13 +69,14 @@ class PackageModeler(object):
 
         self._installed_deb_cache = None
 
-        try:
-            cache = apt.Cache()
-            self._installed_deb_cache = {
-                pkg.name: pkg for pkg in cache if pkg.is_installed
-            }
-        except Exception as exc:  # noqa: B902
-            print(exc)
+        if apt is not None:
+            try:
+                cache = apt.Cache()
+                self._installed_deb_cache = {
+                    pkg.name: pkg for pkg in cache if pkg.is_installed
+                }
+            except Exception as exc:  # noqa: B902
+                print(exc)
 
     @property
     def node_specification_bank(self):
@@ -185,6 +189,9 @@ class PackageModeler(object):
 
                 tree = ET.parse(path)
                 root = tree.getroot()
+                package_version = root.findtext("version")
+                if package_version is not None:
+                    package_version = package_version.strip()
                 for depend_type in (
                     "depend",
                     "build_depend",
@@ -205,6 +212,7 @@ class PackageModeler(object):
                 package.update_attributes(
                     share_path=share_path,
                     dependencies=package_dependencies,
+                    package_version=package_version,
                     source=PackageModeler.source_name,
                     installed_version=installed_version,
                 )

@@ -37,8 +37,9 @@ Install the Python dependencies with:
 pip install -r requirements.txt
 ```
 
-Note: the `apt` Python module used by the workspace modeler may require the
-system package `python3-apt`.
+Note: the `apt` Python module is optional and is only used on Debian/Ubuntu
+systems to enrich workspace package version detection. On non-Debian platforms
+such as RHEL, `workspace_modeler` will still run without it.
 
 ## Source Build
 
