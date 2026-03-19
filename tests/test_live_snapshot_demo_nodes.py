@@ -47,6 +47,18 @@ def _require_demo_environment():
         pytest.skip("demo_nodes_py package is not available")
 
 
+def _get_demo_executable_path(executable_name):
+    executable_path = (
+        Path(get_package_prefix("demo_nodes_py"))
+        / "lib"
+        / "demo_nodes_py"
+        / executable_name
+    )
+    if not executable_path.is_file():
+        pytest.skip(f"demo_nodes_py executable is not available: {executable_name}")
+    return executable_path
+
+
 def _require_live_graph_access():
     try:
         with NodeStrategy(None) as node:
@@ -65,11 +77,22 @@ def _require_live_graph_access():
 
 def _start_demo_node(executable_name):
     return subprocess.Popen(
-        ["ros2", "run", "demo_nodes_py", executable_name],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        [str(_get_demo_executable_path(executable_name))],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
         start_new_session=True,
     )
+
+
+def _describe_process_exit(process, process_name):
+    stdout, stderr = process.communicate(timeout=1)
+    details = [f"{process_name} exited early with code {process.returncode}"]
+    if stdout:
+        details.append(f"{process_name} stdout:\n{stdout.strip()}")
+    if stderr:
+        details.append(f"{process_name} stderr:\n{stderr.strip()}")
+    return "\n".join(details)
 
 
 def _stop_process(process):
@@ -91,13 +114,9 @@ def _wait_for_demo_graph(talker, listener, timeout_sec=20.0):
 
     while time.time() < deadline:
         if talker.poll() is not None:
-            pytest.fail(
-                f"demo_nodes_py talker exited early with code {talker.returncode}"
-            )
+            pytest.fail(_describe_process_exit(talker, "demo_nodes_py talker"))
         if listener.poll() is not None:
-            pytest.fail(
-                f"demo_nodes_py listener exited early with code {listener.returncode}"
-            )
+            pytest.fail(_describe_process_exit(listener, "demo_nodes_py listener"))
 
         try:
             with NodeStrategy(None) as node:
@@ -130,7 +149,8 @@ def _wait_for_demo_graph(talker, listener, timeout_sec=20.0):
         time.sleep(0.5)
 
     pytest.fail(
-        "Timed out waiting for demo_nodes_py talker/listener to appear in the ROS graph. "
+        "Timed out waiting for demo_nodes_py talker/listener to appear in the "
+        "ROS graph. "
         f"Observed nodes: {sorted(observed_nodes)}. "
         f"Last probe error: {last_error}"
     )
