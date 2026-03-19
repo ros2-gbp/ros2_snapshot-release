@@ -206,6 +206,16 @@ def test_get_installed_version_matches_dash_and_underscore_package_names():
     )
 
 
+def test_package_modeler_init_without_python_apt_keeps_os_version_lookup_optional(
+    monkeypatch,
+):
+    monkeypatch.setattr(workspace_modeler_module, "apt", None)
+
+    package_modeler = PackageModeler()
+
+    assert package_modeler._installed_deb_cache is None
+
+
 def test_collect_packages_walks_package_prefixes_and_collects_artifacts(
     monkeypatch, tmp_path
 ):
@@ -246,8 +256,33 @@ def test_collect_packages_walks_package_prefixes_and_collects_artifacts(
 
     assert package_modeler._num == 1
     assert package_spec.share_path == str(share_path)
+    assert package_spec.package_version == "1.0.0"
     assert set(package_spec.dependencies) == {"rclpy", "std_msgs"}
     assert package_spec.messages == ["Foo"]
     assert package_spec.nodes == ["demo_node"]
     assert node_spec.package == "demo_pkg"
     assert node_spec.file_path == str(lib_path / "demo_node")
+
+
+def test_share_instance_records_package_version_without_os_package_lookup(tmp_path):
+    share_path = tmp_path / "prefix" / "share" / "demo_pkg"
+    share_path.mkdir(parents=True)
+    (share_path / "package.xml").write_text(
+        """
+        <package format="2">
+          <name>demo_pkg</name>
+          <version>2.3.4</version>
+          <description>demo</description>
+          <maintainer email="demo@example.com">Demo</maintainer>
+          <license>Apache-2.0</license>
+        </package>
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    package_modeler = make_package_modeler(installed_cache=None)
+    package_spec = package_modeler._share_instance("demo_pkg", str(tmp_path / "prefix"))
+
+    assert package_spec is not None
+    assert package_spec.package_version == "2.3.4"
+    assert package_spec.installed_version is None
