@@ -1,3 +1,26 @@
+## ros2_snapshot (rolling) - 0.0.5-1
+
+The packages in the `ros2_snapshot` repository were released into the `rolling` distro by running `/usr/bin/bloom-release ros2_snapshot --rosdistro rolling --track rolling` on `Thu, 19 Mar 2026 14:00:30 -0000`
+
+The `ros2_snapshot` package was released.
+
+Version of package(s) in repository `ros2_snapshot`:
+
+- upstream repository: https://github.com/cnurobotics/ros2_snapshot.git
+- release repository: https://github.com/ros2-gbp/ros2_snapshot-release.git
+- rosdistro version: `0.0.3-1`
+- old version: `0.0.3-1`
+- new version: `0.0.5-1`
+
+Versions of tools used:
+
+- bloom version: `0.13.0`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## ros2_snapshot (jazzy) - 0.0.2-2
 
 The packages in the `ros2_snapshot` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release ros2_snapshot --rosdistro jazzy --track jazzy` on `Sat, 07 Mar 2026 00:25:06 -0000`
