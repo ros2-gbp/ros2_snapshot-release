@@ -1,0 +1,43 @@
+ros-rolling-ros2-snapshot (0.0.6-2bookworm) bookworm; urgency=high
+
+  * Update live test for build farm
+  * Make workspace package versioning portable
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Thu, 19 Mar 2026 04:00:00 -0000
+
+ros-rolling-ros2-snapshot (0.0.5-2bookworm) bookworm; urgency=high
+
+  * Restore multi-distro snapshot compatibility
+  * Tighten and expand ros2_snapshot test coverage
+  * Preserve ROS type ambiguities explicitly
+  * Guard workspace modeler against symlink cycles
+  * Harden snapshot and model handling
+  * move to ros2_snapshot folder for distribution
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Thu, 19 Mar 2026 04:00:00 -0000
+
+ros-rolling-ros2-snapshot (0.0.4-2bookworm) bookworm; urgency=high
+
+  * update dependencies for buildfarm
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Fri, 06 Mar 2026 05:00:00 -0000
+
+ros-rolling-ros2-snapshot (0.0.3-2bookworm) bookworm; urgency=high
+
+  * Use rclpy.endpoint_info instead of rclpy.topic_endpoint_info in rolling
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Sat, 21 Feb 2026 05:00:00 -0000
+
+ros-rolling-ros2-snapshot (0.0.2-2bookworm) bookworm; urgency=high
+
+  * fix package.xml
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Sat, 21 Feb 2026 05:00:00 -0000
+
+ros-rolling-ros2-snapshot (0.0.1-2bookworm) bookworm; urgency=high
+
+  * Original release
+
+ -- CNU Robotics CHRISLab <robotics@cnu.edu>  Thu, 29 Jan 2026 05:00:00 -0000
+
+
