@@ -1,93 +1,159 @@
 # ROS 2 Snapshot Tools
 
+## Description
 
-### Description
+ROS 2 Snapshot provides Python-based [ROS 2](http://www.ros.org) tools for
+capturing:
 
-Within this repository are Python-based [ROS 2](http://www.ros.org) tools that
-can be used to capture a software model of a ROS 2 Workspace and running ROS deployment.
+- a specification model of the ROS 2 packages available in a workspace
+- a deployment model of a currently running ROS system
 
-The captured model can be loaded, manipulated, and exported for documentation or use
-in so-called Model Integrated Computing (MIC) or Model Driven Engineering (MDE).
+The captured model can be loaded, manipulated, and exported for documentation,
+interface control documentation (ICD), and model-based engineering workflows.
 
 This repository includes the following modules:
-* `core`                    - ROS Entity metamodel classes and tools for
-                               marshalling/unmarshalling instances of these
-                               metamodels (model)
-* `workspace_modeler`       - a tool to capture specification model of existing ROS
-                               workspace
-* `snapshot`                - a tool to capture models from currently running ROS
-                               deployments
 
-The system is useful for Interface Control Documentation (ICD) of deployed systems.
+- `core` - ROS entity metamodel classes and tools for marshalling and
+  unmarshalling model instances
+- `workspace_modeler` - captures a specification model of an existing ROS 2
+  workspace
+- `snapshot` - captures a model of a currently running ROS 2 deployment
 
-### Initial Setup
+## Requirements
 
-The Python 3 executables require `graphviz`, `pydantic`, `pytest`, and `PyYAML` packages. Use
-<pre>
+This version of the package has been tested under ROS Jazzy, Kilted, and Rolling running Ubuntu 24.04.
+
+Before using `ros2_snapshot`, make sure:
+
+- ROS 2 is installed and your environment has been sourced
+- the runtime ROS 2 CLI dependencies from [`package.xml`](package.xml)
+  are available
+- Python dependencies from [`requirements.txt`](requirements.txt)
+  are installed
+
+Install the Python dependencies with:
+
+```bash
 pip install -r requirements.txt
-</pre>
-
-### Source Build
-
-Clone this project into your [Colcon](https://colcon.readthedocs.io/en/released/user/installation.html) Workspace, and run the following commands:
-- `colcon build`
-- `source <ros_ws_location>/setup.bash` (your `.bashrc` may handle this automatically on shell restart)
-
-Thereafter, `ros2_snapshot` is available for use.
-
-To capture a model of the ROS 2 workspace, including installed and custom packages, as configured on your machine:
 ```
+
+Note: the `apt` Python module is optional and is only used on Debian/Ubuntu
+systems to enrich workspace package version detection. On non-Debian platforms
+such as RHEL, `workspace_modeler` will still run without it.
+
+## Source Build
+
+Clone this project into your
+[colcon](https://colcon.readthedocs.io/en/released/user/installation.html)
+workspace, then build and source it:
+
+```bash
+colcon build
+source <ros_ws_location>/setup.bash
+```
+
+After that, the package is available through `ros2 run ros2_snapshot ...`.
+
+## Quick Start
+
+`ros2_snapshot` is typically used in two steps:
+
+1. Generate a specification model of the workspace.
+2. Snapshot the currently running ROS deployment using that specification model.
+
+Generate the workspace model first:
+
+```bash
 ros2 run ros2_snapshot workspace
 ```
 
-To capture a model of currently running system:
-```
+Then snapshot a running system:
+
+```bash
 ros2 run ros2_snapshot running
 ```
 
-By default, the snapshot tools save information in `yaml` and `pickle` formats
-in the default `~/.snapshot_modeling` folder. Additionally, `json` and human readable basic
-text formats, along with a graphviz based DOT view of the ROS computation graph,
-are available as options.
+The `running` command expects an existing specification model. By default it
+loads that model from `~/.snapshot_modeling/yaml`, so the workspace step should
+normally be run first. If your specification files live elsewhere, use
+`--spec-input` to point `running` at the correct folder.
 
-Use the `-a` option to save all available formats.
+By default, both tools write `yaml` and `pickle` outputs under
+`~/.snapshot_modeling`. Use `-a` to also save `json`, human-readable text, and
+the DOT graph output for the running snapshot.
 
-See the READMEs in each module for more information, or `-h` to see options.
+For command-line details, use `-h` or see the module READMEs:
 
-### Basic Demonstration
+- [`ros2_snapshot/workspace_modeler/README.md`](ros2_snapshot/workspace_modeler/README.md)
+- [`ros2_snapshot/snapshot/README.md`](ros2_snapshot/snapshot/README.md)
 
-To see a basic demonstration, first run the workspace modeler
+## Basic Demonstration
 
-`clear; ros2 run ros2_snapshot workspace -a`
+First generate the workspace specification model:
 
-And inspect the specification files in the default `~/.snapshot_modeling` folder.
+```bash
+ros2 run ros2_snapshot workspace -a
+```
 
-Then, run some ROS nodes
+Inspect the generated files under `~/.snapshot_modeling`.
 
-`clear; ros2 run turtlesim turtlesim_node --ros-args -r __ns:=/demo`
+Then start a few ROS nodes:
 
-`clear; ros2 run turtlesim turtle_teleop_key --ros-args -r __ns:=/demo`
+```bash
+ros2 run turtlesim turtlesim_node --ros-args -r __ns:=/demo
+```
 
-`clear; ros2 run demo_nodes_py talker`
+```bash
+ros2 run turtlesim turtle_teleop_key --ros-args -r __ns:=/demo
+```
 
-`clear; ros2 run demo_nodes_py listener`
+```bash
+ros2 run demo_nodes_py talker
+```
 
-And run the snapshot tool
+```bash
+ros2 run demo_nodes_py listener
+```
 
-`clear; ros2 run ros2_snapshot running -a`
+With those nodes running, capture a deployment snapshot:
 
-Again inspect the data bank files in the default `~/.snapshot_modeling` folder.
+```bash
+ros2 run ros2_snapshot running -a
+```
+
+Inspect the resulting deployment model files under `~/.snapshot_modeling`.
+
+## Multi-Machine Process Snapshots
+
+For distributed systems, start a lightweight snapshot remote on each machine
+other than the central machine that will run `ros2_snapshot running`:
+
+```bash
+ros2 run ros2_snapshot remote
+```
+
+By default, the remote namespaces itself using the machine hostname and serves a
+`get_process_snapshot` service. The `running` tool automatically discovers all
+visible snapshot-remote services and uses their local process data to associate
+ROS nodes with the machines that host them. The central snapshot machine is
+always inspected locally. If a remote is also running on the central machine,
+duplicate local/remote process records are merged using the machine ID when the
+operating system provides one. If no remotes are discovered, `running` falls
+back to the original local-process behavior.
+
+The remote implementation lives in
+`ros2_snapshot/snapshot/snapshot_remote.py` and is intentionally self-contained
+enough to copy to a remote host that has ROS 2 Python support, `std_srvs`, and
+`psutil` available.
 
 
-### Known issues
+## Known issues
 
 This project is an ongoing development effort and may be subject to future changes.
 
-This package has been tested under ROS Jazzy and Kilted running Ubuntu 24.04
-
 See the individual module READMEs for additional information.
 
-### License Information
+## License Information
 
 Released under Apache 2.0 license
 
@@ -103,7 +169,7 @@ See LICENSE for more information.
 
 Please use the following publications for reference when using ROS 2 Snapshot:
 
-- S. E. Fox, A. J. Farney, and D. C. Conner, "Documenting ROS 2 Systems with ROS 2 Snapshot",  SoutheastCon 2026, Huntsville, AL, USA, 2026, to appear.
+- S. Fox, A. J. Farney and D. C. Conner, ["Documenting ROS 2 Systems with ROS 2 Snapshot,"](https://doi.org/10.1109/SoutheastCon63549.2026.11476601) SoutheastCon 2026, Huntsville, AL, USA, 2026, pp. 1-6, doi: 10.1109/SoutheastCon63549.2026.11476601.
 
 This work is based on earlier work for ROS 1:
 
@@ -111,7 +177,7 @@ This work is based on earlier work for ROS 1:
 
 - W. R. Drumheller and D. C. Conner, ["Online system modeling and documentation using ROS snapshot,"](https://dl.acm.org/doi/10.5555/3447080.3447095) J. Comput. Sci. Coll. 36, 3 (October 2020), 128–141.
 
-### Credit
+## Credit
 
 - William R. Drumheller
 - David C. Conner <[robotics@cnu.edu](mailto:robotics@cnu.edu)>
