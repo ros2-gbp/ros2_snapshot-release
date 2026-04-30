@@ -36,31 +36,12 @@ class PackageSpecification(_EntityMetamodel):
     services: Optional[List[str]] = None
     share_path: Optional[str] = None
 
-    def __init__(self, **kwargs):
-        """Initialize PackageSpecification."""
-        super().__init__(**kwargs)
-        self.actions = kwargs.get("actions", None)
-        self.dependencies = kwargs.get("dependencies", None)
-        self.installed_version = kwargs.get("installed_version", None)
-        self.is_metapackage = kwargs.get("is_metapackage", False)
-        self.launch_files = kwargs.get("launch_files", None)
-        self.messages = kwargs.get("messages", None)
-        self.nodes = kwargs.get("nodes", None)
-        self.package_version = kwargs.get("package_version", None)
-        self.parameter_files = kwargs.get("parameter_files", None)
-        self.services = kwargs.get("services", None)
-        self.share_path = kwargs.get("share_path", None)
-
 
 class PackageSpecificationBank(_BankMetamodel):
     """Metamodel for Bank of ROS Package specifications."""
 
     yaml_tag: ClassVar[str] = "!PackageSpecBank"
     HUMAN_OUTPUT_NAME: ClassVar[str] = "PackageSpecifications:"
-
-    def __init__(self, **kwargs):
-        """Initialize PackageSpecificationBank."""
-        super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """

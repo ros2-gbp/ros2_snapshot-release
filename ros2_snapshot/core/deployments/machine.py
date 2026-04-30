@@ -23,15 +23,10 @@ class Machine(_EntityMetamodel):
     yaml_tag: ClassVar[str] = "!Machine"
 
     hostname: Optional[str] = None
+    machine_id: Optional[str] = None
+    machine_id_source: Optional[str] = None
     ip_address: Optional[str] = None
     node_names: Optional[Union[Set[str], List[str]]] = None
-
-    def __init__(self, **kwargs):
-        """Initialize the Machine metamodel."""
-        super().__init__(**kwargs)
-        self.hostname = kwargs.get("hostname", None)
-        self.ip_address = kwargs.get("ip_address", None)
-        self.node_names = kwargs.get("node_names", None)
 
 
 class MachineBank(_BankMetamodel):
@@ -39,17 +34,6 @@ class MachineBank(_BankMetamodel):
 
     yaml_tag: ClassVar[str] = "!MachineBank"
     HUMAN_OUTPUT_NAME = "Machines:"
-
-    def __init__(self, **kwargs):
-        """
-        Construct a new instance of the Bank Metamodel from keyword arguments.
-
-        :param kwargs: the keyword arguments
-        :type kwargs: dict{str: str}
-        :return: the constructed Bank Metamodel
-        :rtype: ActionBank
-        """
-        super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """

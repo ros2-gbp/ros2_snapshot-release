@@ -78,6 +78,21 @@ def test_collect_package_specs_tracks_paths_inside_relative_symlink_dirs(tmp_pat
     ]
 
 
+def test_collect_package_specs_skips_missing_symlink_targets(tmp_path):
+    package_modeler = make_package_modeler()
+    share_path = tmp_path / "pkg" / "share" / "demo_pkg"
+    share_path.mkdir(parents=True)
+    missing_link = share_path / "missing_file.js"
+    missing_link.symlink_to(Path("missing_target.js"))
+
+    package_spec = package_modeler.package_specification_bank["demo_pkg"]
+
+    package_modeler._collect_package_specs("demo_pkg", str(share_path), package_spec)
+
+    assert package_spec.nodes is None
+    assert package_modeler.node_specification_bank.keys == []
+
+
 def test_find_executable_files_avoids_symlink_cycles(tmp_path):
     package_modeler = make_package_modeler()
     executable_dir = tmp_path / "pkg" / "lib" / "demo_pkg"
