@@ -2,6 +2,13 @@
 Changelog for ros2_snapshot
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.0.7 (2026-04-29)
+------------------
+* Update prerelease metadata and citation
+* Harden snapshot remote metadata and logging
+* Add distributed snapshot remote collection
+* Improve snapshot compatibility and matching
+
 0.0.6 (2026-03-19)
 ------------------
 * Update live test for build farm

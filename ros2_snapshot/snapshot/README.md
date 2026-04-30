@@ -16,6 +16,28 @@ for future use in model-based engineering.
 
 ### Usage
 
+
+
+For multi-machine deployments, run the lightweight process remote on each host
+other than the central host that runs `ros2_snapshot running`:
+
+```bash
+ros2 run ros2_snapshot remote
+```
+
+The remote automatically namespaces itself from the hostname and exposes a
+`get_process_snapshot` service. The `running` command discovers all visible
+snapshot-remote services and uses those process snapshots to populate node
+process metadata and machine-bank ownership. The central snapshot host is
+always inspected locally. If a remote is also running on that host, duplicate
+local/remote process records are merged using the machine ID when available. If
+no remotes are available, `running` uses local process discovery only.
+
+The remote code is in `snapshot_remote.py` and can also be copied to a remote
+machine and run as a standalone Python script when the full package is not
+installed there.
+
+
 - The `snapshot` program assumes that it is running on the same ROS network as a
 currently deployed ROS system.
 

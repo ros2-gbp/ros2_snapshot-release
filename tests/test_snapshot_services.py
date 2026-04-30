@@ -62,6 +62,35 @@ def test_collect_system_info_uses_service_client_api(monkeypatch):
     assert services["/demo_client"]["types"] == {"example_interfaces/srv/AddTwoInts"}
 
 
+def test_collect_system_info_logs_duplicate_node_names(monkeypatch, caplog):
+    ros_snapshot = snapshot_module.ROSSnapshot()
+    duplicate_nodes = [
+        SimpleNamespace(full_name="/duplicate"),
+        SimpleNamespace(full_name="/duplicate"),
+    ]
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "get_node_names",
+        lambda node, include_hidden_nodes=True: duplicate_nodes,
+    )
+    monkeypatch.setattr(snapshot_module, "get_action_server_info", lambda **kwargs: [])
+    monkeypatch.setattr(snapshot_module, "get_action_client_info", lambda **kwargs: [])
+    monkeypatch.setattr(snapshot_module, "get_publisher_info", lambda **kwargs: [])
+    monkeypatch.setattr(snapshot_module, "get_subscriber_info", lambda **kwargs: [])
+    monkeypatch.setattr(snapshot_module, "get_service_server_info", lambda **kwargs: [])
+    monkeypatch.setattr(snapshot_module, "get_service_client_info", lambda **kwargs: [])
+
+    with caplog.at_level(snapshot_module.LoggerLevel.ERROR):
+        _, nodes, _, _ = ros_snapshot.collect_system_info(node=object())
+
+    assert nodes == duplicate_nodes
+    assert (
+        "Duplicate ROS node name discovered: '/duplicate' appears 2 times"
+        in caplog.text
+    )
+
+
 def test_collect_services_info_tracks_service_clients_and_providers():
     ros_snapshot = snapshot_module.ROSSnapshot()
     ros_snapshot._ros_model_builder = ROSModelBuilder([])
