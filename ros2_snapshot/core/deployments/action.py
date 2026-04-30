@@ -28,13 +28,6 @@ class Action(_EntityMetamodel):
     construct_type: Optional[str] = None
     server_node_names: Optional[Union[Set[str], List[str], str]] = None
 
-    def __init__(self, **kwargs):
-        """Initialize the Action metamodel."""
-        super().__init__(**kwargs)
-        self.client_node_names = kwargs.get("client_node_names", None)
-        self.construct_type = kwargs.get("construct_type", None)
-        self.server_node_names = kwargs.get("server_node_names", None)
-
     def _add_graph_node_to_dot_graph(self, action_dot_name, graph):
         """
         Private helper method to add an Action DOT Node to the DOT Graph.
@@ -116,17 +109,6 @@ class ActionBank(_BankMetamodel):
 
     yaml_tag: ClassVar[str] = "!ActionBank"
     HUMAN_OUTPUT_NAME = "Actions:"
-
-    def __init__(self, **kwargs):
-        """
-        Construct a new instance of the Bank Metamodel from keyword arguments.
-
-        :param kwargs: the keyword arguments
-        :type kwargs: dict{str: str}
-        :return: the constructed Bank Metamodel
-        :rtype: ActionBank
-        """
-        super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """

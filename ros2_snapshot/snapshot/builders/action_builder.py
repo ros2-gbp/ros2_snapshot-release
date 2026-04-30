@@ -204,13 +204,16 @@ class ActionBuilder(_EntityBuilder):
             Action Client ROS Node names to appearance counts
         :type action_node_to_counts: dict{str: int}
         """
-        print("\x1b[92mcount_action_node_appearances\x1b[0m")
-        print(
-            f"\n\t self_topic_name_suffixes_to_builders: {self.topic_name_suffixes_to_builders}"
+        Logger.get_logger().log(
+            LoggerLevel.DEBUG, "\x1b[92mcount_action_node_appearances\x1b[0m"
         )
-        print(f"\t publisher_suffixes: {publisher_suffixes}")
+        Logger.get_logger().log(
+            LoggerLevel.DEBUG,
+            f"\n\t self_topic_name_suffixes_to_builders: {self.topic_name_suffixes_to_builders}\n"
+            f"\t publisher_suffixes: {publisher_suffixes}",
+        )
         for suffix in publisher_suffixes:
-            print(f"SUFFIX : {suffix}")
+            Logger.get_logger().log(LoggerLevel.DEBUG, f"SUFFIX : {suffix}")
             topic_builder = self.topic_name_suffixes_to_builders[suffix]
 
             for action_node_name in topic_builder.publisher_node_names:
@@ -284,15 +287,13 @@ class ActionBuilder(_EntityBuilder):
             expected Action Topic suffixes; False if not
         :rtype: bool
         """
-        print(f"CLS = {cls.TOPIC_SUFFIXES}")
-        print(
+        Logger.get_logger().log(LoggerLevel.DEBUG, f"CLS = {cls.TOPIC_SUFFIXES}")
+        Logger.get_logger().log(
+            LoggerLevel.DEBUG,
             f"\ttest_potential_action_topic_builder action_topic={action_topic} "
-            f"|\x1b[91m suffix={action_topic.name_suffix}\x1b[0m"
-        )
-
-        print(
+            f"|\x1b[91m suffix={action_topic.name_suffix}\x1b[0m\n"
             f"ACTION_TOPIC: {action_topic.name_suffix}"
-            f"\t\t{action_topic.name_suffix in cls.TOPIC_SUFFIXES}"
+            f"\t\t{action_topic.name_suffix in cls.TOPIC_SUFFIXES}",
         )
         return action_topic.name_suffix in cls.TOPIC_SUFFIXES
 
@@ -382,8 +383,11 @@ class ActionBuilder(_EntityBuilder):
             Topics
         :rtype: dict{str: Topic}
         """
-        print(f"\n\n\nACTION_BUILDER SUFFIX LIST: {ActionBuilder.TOPIC_SUFFIXES}")
-        print(f"TOPIC_NAME_SUFFIXES: {self.topic_name_suffixes_to_builders}")
+        Logger.get_logger().log(
+            LoggerLevel.DEBUG,
+            f"ACTION_BUILDER SUFFIX LIST: {ActionBuilder.TOPIC_SUFFIXES}\n"
+            f"TOPIC_NAME_SUFFIXES: {self.topic_name_suffixes_to_builders}",
+        )
         return {key: "not_completed" for key in ActionBuilder.TOPIC_SUFFIXES}
 
     def extract_metamodel(self):
