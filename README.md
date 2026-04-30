@@ -123,6 +123,29 @@ ros2 run ros2_snapshot running -a
 
 Inspect the resulting deployment model files under `~/.snapshot_modeling`.
 
+## Multi-Machine Process Snapshots
+
+For distributed systems, start a lightweight snapshot remote on each machine
+other than the central machine that will run `ros2_snapshot running`:
+
+```bash
+ros2 run ros2_snapshot remote
+```
+
+By default, the remote namespaces itself using the machine hostname and serves a
+`get_process_snapshot` service. The `running` tool automatically discovers all
+visible snapshot-remote services and uses their local process data to associate
+ROS nodes with the machines that host them. The central snapshot machine is
+always inspected locally. If a remote is also running on the central machine,
+duplicate local/remote process records are merged using the machine ID when the
+operating system provides one. If no remotes are discovered, `running` falls
+back to the original local-process behavior.
+
+The remote implementation lives in
+`ros2_snapshot/snapshot/snapshot_remote.py` and is intentionally self-contained
+enough to copy to a remote host that has ROS 2 Python support, `std_srvs`, and
+`psutil` available.
+
 
 ## Known issues
 
@@ -146,7 +169,7 @@ See LICENSE for more information.
 
 Please use the following publications for reference when using ROS 2 Snapshot:
 
-- S. E. Fox, A. J. Farney, and D. C. Conner, "Documenting ROS 2 Systems with ROS 2 Snapshot",  SoutheastCon 2026, Huntsville, AL, USA, 2026, to appear.
+- S. Fox, A. J. Farney and D. C. Conner, ["Documenting ROS 2 Systems with ROS 2 Snapshot,"](https://doi.org/10.1109/SoutheastCon63549.2026.11476601) SoutheastCon 2026, Huntsville, AL, USA, 2026, pp. 1-6, doi: 10.1109/SoutheastCon63549.2026.11476601.
 
 This work is based on earlier work for ROS 1:
 

@@ -160,7 +160,6 @@ def test_topic_roundtrip_preserves_ambiguous_metadata_shapes(
         construct_type="std_msgs/msg/String",
         publisher_node_names={"/talker"},
         subscriber_node_names={"/listener"},
-        endpoint_type="[multiple] PUBLISHER | SUBSCRIPTION",
         topic_hash="[multiple] hash-a | hash-b",
         qos_profile={
             "[multiple]": [
@@ -192,7 +191,6 @@ def test_topic_roundtrip_preserves_ambiguous_metadata_shapes(
     loaded_model = getattr(ROSModel, load_method)(tmp_path, "snapshot")
 
     topic = loaded_model.topic_bank["/chatter"]
-    assert topic.endpoint_type == "[multiple] PUBLISHER | SUBSCRIPTION"
     assert topic.topic_hash == "[multiple] hash-a | hash-b"
     assert topic.qos_profile == {
         "[multiple]": [

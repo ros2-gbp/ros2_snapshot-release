@@ -20,6 +20,8 @@ Supports a one-to-many re-mapping
 
 """
 
+from ros2_snapshot.core.utilities.logger import Logger, LoggerLevel
+
 
 class RemapperBank:
     """Remapper from data to key for various banks."""
@@ -72,22 +74,15 @@ class RemapperBank:
 
             if isinstance(self._data_to_key_maps[data_name], list):
                 if key not in self._data_to_key_maps[data_name]:
-                    print(
-                        "    Adding ",
-                        key,
-                        " to existing ",
-                        data_name,
-                        self._data_to_key_maps[data_name],
+                    Logger.get_logger().log(
+                        LoggerLevel.DEBUG,
+                        f"    Adding {key} to existing {data_name} {self._data_to_key_maps[data_name]}",
                     )
                     self._data_to_key_maps[data_name].append(key)
             else:
-                print(
-                    "    Adding ",
-                    key,
-                    " to existing ",
-                    data_name,
-                    " as list",
-                    self._data_to_key_maps[data_name],
+                Logger.get_logger().log(
+                    LoggerLevel.DEBUG,
+                    f"    Adding {key} to existing {data_name} as list {self._data_to_key_maps[data_name]}",
                 )
                 self._data_to_key_maps[data_name] = [self._data_to_key_maps[data_name]]
                 self._data_to_key_maps[data_name].append(key)

@@ -15,22 +15,65 @@
 """Base Metamodels used to model ROS Entities and the Banks that contain them."""
 
 import inspect
+import traceback
 import warnings
 from typing import Any, ClassVar, Dict, Optional, Union, get_args, get_origin
 
 from ros2_snapshot.core.utilities.logger import Logger, LoggerLevel
 
-from pydantic import BaseModel, root_validator
+
+def _type_includes_set(tp):
+    """Return True if tp or any of its type arguments is a Set type."""
+    if get_origin(tp) is set:
+        return True
+    return any(_type_includes_set(a) for a in get_args(tp))
+
+
+def _iter_model_subclasses(model_class):
+    """Yield all subclasses of model_class, including indirect subclasses."""
+    for subclass in model_class.__subclasses__():
+        yield subclass
+        yield from _iter_model_subclasses(subclass)
+
+
+try:
+    from pydantic.v1 import BaseModel, ValidationError, root_validator
+
+    def _pre_root_validator(fn):
+        return root_validator(pre=True)(fn)
+
+except ImportError:
+    from pydantic import BaseModel, ValidationError
+
+    try:
+        from pydantic import root_validator
+
+        def _pre_root_validator(fn):
+            return root_validator(pre=True)(fn)
+
+    except ImportError:
+        from pydantic import model_validator
+
+        def _pre_root_validator(fn):
+            return model_validator(mode="before")(classmethod(fn))
 
 
 class _EntityMetamodel(BaseModel):
     """Internal Base Metamodel for ROS Entities."""
 
     yaml_tag: ClassVar[str] = ""
+    _tag_to_class: ClassVar[Optional[Dict[str, type]]] = None
+    _name_to_class: ClassVar[Optional[Dict[str, type]]] = None
 
     name: Optional[str] = None
     source: Optional[str] = None
     version: int = 0
+
+    def __init_subclass__(cls, **kwargs):
+        """Invalidate lookup caches when new entity metamodel classes load."""
+        super().__init_subclass__(**kwargs)
+        _EntityMetamodel._tag_to_class = None
+        _EntityMetamodel._name_to_class = None
 
     def __init__(self, **kwargs):
         """
@@ -91,8 +134,11 @@ class _EntityMetamodel(BaseModel):
                         except (KeyError, TypeError):
                             pass
                         except Exception as ex:  # noqa: B902
-                            print(ex)
-                            pass
+                            Logger.get_logger().log(
+                                LoggerLevel.WARNING,
+                                f"Failed to update version field '{key}' on {self.__class__.__name__}: "
+                                f"{ex}\n{traceback.format_exc()}",
+                            )
                         self.__setattr__(key, val + 1)
                     else:
                         val = str(val) + "_" + str(kwargs[key])
@@ -110,13 +156,25 @@ class _EntityMetamodel(BaseModel):
                     elif isinstance(val, set):
                         val.update(kwargs[key])
                     elif isinstance(val, str):
-                        new_list = [val]  # make into a list
-                        if isinstance(kwargs[key], list):
-                            new_list.extend(kwargs[key])
+                        fields = getattr(self, "__fields__", {})
+                        field = fields.get(key)
+                        use_set = field is not None and _type_includes_set(
+                            field.outer_type_
+                        )
+                        if use_set:
+                            new_coll = {val}
+                            if isinstance(kwargs[key], (set, list)):
+                                new_coll.update(kwargs[key])
+                            else:
+                                new_coll.add(kwargs[key])
                         else:
-                            if kwargs[key] not in new_list:
-                                new_list.append(kwargs[key])
-                        self.__setattr__(key, new_list)
+                            new_coll = [val]
+                            if isinstance(kwargs[key], list):
+                                new_coll.extend(kwargs[key])
+                            else:
+                                if kwargs[key] not in new_coll:
+                                    new_coll.append(kwargs[key])
+                        self.__setattr__(key, new_coll)
                     else:
                         # By default just update the attribute
                         self.__setattr__(key, kwargs[key])
@@ -186,19 +244,23 @@ class _EntityMetamodel(BaseModel):
 
     @classmethod
     def get_model_class(cls, yaml_tag):
-        for subclass in cls.__subclasses__():
-            if getattr(subclass, "yaml_tag", "") == yaml_tag:
-                return subclass
-        return None
+        if cls._tag_to_class is None:
+            cls._tag_to_class = {
+                getattr(sub, "yaml_tag", ""): sub
+                for sub in _iter_model_subclasses(cls)
+                if getattr(sub, "yaml_tag", "")
+            }
+        return cls._tag_to_class.get(yaml_tag)
 
     @classmethod
     def get_model_class_from_type(cls, type_name):
-        for subclass in cls.__subclasses__():
-            if subclass.__name__ == type_name:
-                return subclass
-        return None
+        if cls._name_to_class is None:
+            cls._name_to_class = {
+                sub.__name__: sub for sub in _iter_model_subclasses(cls)
+            }
+        return cls._name_to_class.get(type_name)
 
-    @root_validator(pre=True)
+    @_pre_root_validator
     def check_all_fields(cls, values):
         """Provide more expressive typing errors."""
 
@@ -233,9 +295,9 @@ class _EntityMetamodel(BaseModel):
                 item_type = args[0]
                 return all(is_instance_of_type(item, item_type) for item in value)
             if expected_type not in (float, int, str, bool, None.__class__):
-                print(
+                Logger.get_logger().log(
+                    LoggerLevel.DEBUG,
                     f"Expected type not handled above {expected_type} {type(value)} | {value} | {origin}",
-                    flush=True,
                 )
             return isinstance(value, expected_type)
 
@@ -296,7 +358,15 @@ class _BankMetamodel(BaseModel):
 
     yaml_tag: ClassVar[str] = ""
     HUMAN_OUTPUT_NAME: ClassVar[str] = ""
+    _tag_to_class: ClassVar[Optional[Dict[str, type]]] = None
+    _name_to_class: ClassVar[Optional[Dict[str, type]]] = None
     names_to_metamodels: Dict[str, _EntityMetamodel] = {}
+
+    def __init_subclass__(cls, **kwargs):
+        """Invalidate lookup caches when new bank metamodel classes load."""
+        super().__init_subclass__(**kwargs)
+        _BankMetamodel._tag_to_class = None
+        _BankMetamodel._name_to_class = None
 
     def __init__(self, **kwargs):
         """
@@ -360,7 +430,6 @@ class _BankMetamodel(BaseModel):
         """
         return None
 
-    @property
     def entity_class(self, name):
         """
         Return the class of entity given bank type.
@@ -398,19 +467,23 @@ class _BankMetamodel(BaseModel):
 
     @classmethod
     def get_model_class(cls, yaml_tag):
-        for subclass in cls.__subclasses__():
-            if getattr(subclass, "yaml_tag", "") == yaml_tag:
-                return subclass
-        return None
+        if cls._tag_to_class is None:
+            cls._tag_to_class = {
+                getattr(sub, "yaml_tag", ""): sub
+                for sub in _iter_model_subclasses(cls)
+                if getattr(sub, "yaml_tag", "")
+            }
+        return cls._tag_to_class.get(yaml_tag)
 
     @classmethod
     def get_model_class_from_type(cls, type_name):
-        for subclass in cls.__subclasses__():
-            if subclass.__name__ == type_name:
-                return subclass
-        return None
+        if cls._name_to_class is None:
+            cls._name_to_class = {
+                sub.__name__: sub for sub in _iter_model_subclasses(cls)
+            }
+        return cls._name_to_class.get(type_name)
 
-    @root_validator(pre=True)
+    @_pre_root_validator
     def check_all_fields(cls, values):
         """Provide more expressive typing errors."""
 
@@ -445,9 +518,9 @@ class _BankMetamodel(BaseModel):
                 item_type = args[0]
                 return all(is_instance_of_type(item, item_type) for item in value)
             if expected_type not in (float, int, str, bool, None.__class__):
-                print(
+                Logger.get_logger().log(
+                    LoggerLevel.DEBUG,
                     f"Expected type not handled above {expected_type} {type(value)}",
-                    flush=True,
                 )
             return isinstance(value, expected_type)
 

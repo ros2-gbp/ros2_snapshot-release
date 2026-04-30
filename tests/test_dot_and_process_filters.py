@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import socket
+from types import SimpleNamespace
+
 from ros2_snapshot.core.ros_model import BankType, ROSModel
-from ros2_snapshot.core.utilities import ros_exe_filter
+from ros2_snapshot.core.utilities import filters, ros_exe_filter
 
 
 class FakeProcess:
@@ -81,6 +84,36 @@ def test_save_dot_graph_files_renders_all_banks(monkeypatch, tmp_path):
     assert render_calls == [("snapshot.dot", False, False, str(tmp_path))]
 
 
+def test_save_dot_graph_files_skips_when_graphviz_python_package_missing(
+    monkeypatch, tmp_path
+):
+    class FakeBank:
+        def __init__(self):
+            self.graph_calls = 0
+
+        def add_to_dot_graph(self, graph):
+            self.graph_calls += 1
+
+    node_bank = FakeBank()
+    model = ROSModel(
+        {
+            BankType.NODE: node_bank,
+        }
+    )
+
+    monkeypatch.setattr("ros2_snapshot.core.ros_model.Digraph", None)
+
+    model.save_dot_graph_files(tmp_path, "snapshot", show_graph=False)
+
+    assert node_bank.graph_calls == 0
+
+
+def test_node_filter_drops_namespaced_snapshot_remotes():
+    node_filter = filters.NodeFilter(True, True)
+
+    assert node_filter.should_filter_out("/robot_a/ros2_snapshot_remote") is True
+
+
 def test_classify_process_returns_ros_metadata_for_ros_like_process():
     process = FakeProcess(
         pid=10,
@@ -109,6 +142,36 @@ def test_classify_process_drops_interactive_noise_without_ros_signals():
     )
 
     assert ros_exe_filter.classify_process(process) is None
+
+
+def test_classify_process_drops_ros_daemon_and_site_packages_only_processes():
+    ros_daemon = FakeProcess(
+        pid=12,
+        name="python3",
+        cmdline=[
+            "python3",
+            "-c",
+            "from ros2cli.daemon.daemonize import main; main()",
+            "--name",
+            "ros2-daemon",
+            "--rmw-implementation",
+            "rmw_cyclonedds_cpp",
+        ],
+        exe="/usr/bin/python3",
+    )
+    qt_process = FakeProcess(
+        pid=13,
+        name="QtWebEngineProcess",
+        cmdline=[
+            "/home/demo/venv/lib/python3.12/site-packages/PySide6/Qt/libexec/"
+            "QtWebEngineProcess"
+        ],
+        exe="/home/demo/venv/lib/python3.12/site-packages/PySide6/Qt/libexec/"
+        "QtWebEngineProcess",
+    )
+
+    assert ros_exe_filter.classify_process(ros_daemon) is None
+    assert ros_exe_filter.classify_process(qt_process) is None
 
 
 def test_list_ros_like_processes_sorts_launch_before_run_before_other(monkeypatch):
@@ -145,3 +208,95 @@ def test_list_ros_like_processes_sorts_launch_before_run_before_other(monkeypatc
         "ros-token",
         "exe-path-hint",
     ]
+
+
+def test_get_ip_addresses_prefers_interface_addresses_over_loopback_hostname(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        ros_exe_filter.psutil,
+        "net_if_addrs",
+        lambda: {
+            "lo": [SimpleNamespace(family=socket.AF_INET, address="127.0.0.1")],
+            "eth0": [SimpleNamespace(family=socket.AF_INET, address="192.0.2.20")],
+        },
+    )
+    monkeypatch.setattr(
+        ros_exe_filter.socket,
+        "getaddrinfo",
+        lambda hostname, port: [(socket.AF_INET, None, None, None, ("127.0.1.1", 0))],
+    )
+    monkeypatch.setattr(
+        ros_exe_filter.socket,
+        "gethostbyname",
+        lambda hostname: "127.0.1.1",
+    )
+
+    addresses = ros_exe_filter.get_ip_addresses("robot_a")
+
+    assert addresses[0] == "192.0.2.20"
+    assert "127.0.0.1" not in addresses
+    assert "127.0.1.1" not in addresses
+
+
+def test_ros_network_environment_filters_to_network_related_keys():
+    environment = {
+        "ROS_DOMAIN_ID": "96",
+        "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+        "ROS_PACKAGE_PATH": "/opt/ros/demo",
+        "PATH": "/usr/bin",
+    }
+
+    result = ros_exe_filter.get_ros_network_environment(environment)
+
+    assert result == {
+        "ROS_DOMAIN_ID": "96",
+        "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp",
+    }
+
+
+def test_extract_ip_address_hints_reads_ros_network_config_files(tmp_path):
+    config_path = tmp_path / "cyclonedds.xml"
+    config_path.write_text(
+        "<CycloneDDS><Domain><Discovery><Peers>"
+        '<Peer Address="10.126.17.10"/>'
+        '<Peer Address="127.0.0.1"/>'
+        "</Peers></Discovery></Domain></CycloneDDS>"
+    )
+
+    result = ros_exe_filter.extract_ip_address_hints(
+        {
+            "CYCLONEDDS_URI": f"file://{config_path}",
+            "ROS_DISCOVERY_SERVER": "10.126.17.131:11811",
+        }
+    )
+
+    assert result == ["10.126.17.10", "10.126.17.131"]
+
+
+def test_get_ip_addresses_prefers_ros_network_address_hints(monkeypatch):
+    monkeypatch.setattr(
+        ros_exe_filter.psutil,
+        "net_if_addrs",
+        lambda: {
+            "eth0": [SimpleNamespace(family=socket.AF_INET, address="10.124.41.218")],
+            "tun0": [SimpleNamespace(family=socket.AF_INET, address="10.126.17.136")],
+        },
+    )
+    monkeypatch.setattr(
+        ros_exe_filter.socket,
+        "getaddrinfo",
+        lambda hostname, port: [],
+    )
+    monkeypatch.setattr(
+        ros_exe_filter.socket,
+        "gethostbyname",
+        lambda hostname: "127.0.1.1",
+    )
+
+    addresses = ros_exe_filter.get_ip_addresses(
+        "robot_a",
+        preferred_addresses=["10.126.17.131"],
+    )
+
+    assert addresses == ["10.126.17.136", "10.124.41.218"]
