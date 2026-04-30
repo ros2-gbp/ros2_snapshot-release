@@ -17,8 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pydantic import BaseModel
-
+from ros2_snapshot.core.base_metamodel import BaseModel
 from ros2_snapshot.core.ros_model import BankType, ROSModel
 from ros2_snapshot.core.specifications.node_specification import NodeSpecificationBank
 from ros2_snapshot.snapshot import snapshot as snapshot_module
@@ -60,9 +59,7 @@ def test_snapshot_returns_false_when_collect_system_info_raises_socket_error(
     monkeypatch.setattr(
         snapshot_module.ROSSnapshot,
         "collect_system_info",
-        lambda self, node, include_hidden_topics=True: (_ for _ in ()).throw(
-            socket.error("network down")
-        ),
+        lambda self, node: (_ for _ in ()).throw(socket.error("network down")),
     )
 
     assert snapshot_module.ROSSnapshot().snapshot() is False
@@ -78,7 +75,7 @@ def test_snapshot_returns_false_when_collect_system_info_raises_validation_error
     monkeypatch.setattr(
         snapshot_module.ROSSnapshot,
         "collect_system_info",
-        lambda self, node, include_hidden_topics=True: DummyModel(value="bad"),
+        lambda self, node: DummyModel(value="bad"),
     )
 
     assert snapshot_module.ROSSnapshot().snapshot() is False
@@ -261,6 +258,61 @@ def test_collect_component_info_marks_component_managers_and_components(monkeypa
 
     snapshot = snapshot_module.ROSSnapshot()
     snapshot._ros_model_builder = ROSModelBuilder([])
+    direct_node = object()
+    strategy_node = SimpleNamespace(direct_node=direct_node)
+    api_nodes = []
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "get_node_names",
+        lambda node: api_nodes.append(("get_node_names", node))
+        or [SimpleNamespace(full_name="/container")],
+    )
+    monkeypatch.setattr(
+        snapshot_module,
+        "find_container_node_names",
+        lambda node, node_names: api_nodes.append(("find_container_node_names", node))
+        or [SimpleNamespace(full_name="/container")],
+    )
+    monkeypatch.setattr(
+        snapshot_module,
+        "get_components_in_container",
+        lambda node, remote_container_node_name: api_nodes.append(
+            ("get_components_in_container", node)
+        )
+        or (
+            True,
+            [
+                SimpleNamespace(name="/component_a"),
+                SimpleNamespace(name="/component_b"),
+            ],
+        ),
+    )
+
+    snapshot._collect_component_info(node=strategy_node)
+
+    manager_builder = snapshot.node_bank["/container"]
+    component_a_builder = snapshot.node_bank["/component_a"]
+    component_b_builder = snapshot.node_bank["/component_b"]
+
+    assert api_nodes == [
+        ("get_node_names", direct_node),
+        ("find_container_node_names", direct_node),
+        ("get_components_in_container", direct_node),
+    ]
+    assert manager_builder.isComponentManager is True
+    assert manager_builder.components_list == ["/component_a", "/component_b"]
+    assert component_a_builder.isComponent is True
+    assert component_a_builder.manager_name == "/container"
+    assert component_b_builder.isComponent is True
+    assert component_b_builder.manager_name == "/container"
+
+
+def test_collect_component_info_skips_failed_component_introspection(monkeypatch):
+    patch_process_lookup(monkeypatch)
+
+    snapshot = snapshot_module.ROSSnapshot()
+    snapshot._ros_model_builder = ROSModelBuilder([])
 
     monkeypatch.setattr(
         snapshot_module,
@@ -276,26 +328,16 @@ def test_collect_component_info_marks_component_managers_and_components(monkeypa
         snapshot_module,
         "get_components_in_container",
         lambda node, remote_container_node_name: (
-            0,
-            [
-                SimpleNamespace(name="/component_a"),
-                SimpleNamespace(name="/component_b"),
-            ],
+            False,
+            "No 'list_nodes' service found",
         ),
     )
 
     snapshot._collect_component_info(node=object())
 
     manager_builder = snapshot.node_bank["/container"]
-    component_a_builder = snapshot.node_bank["/component_a"]
-    component_b_builder = snapshot.node_bank["/component_b"]
-
-    assert manager_builder.isComponentManager is True
-    assert manager_builder.components_list == ["/component_a", "/component_b"]
-    assert component_a_builder.isComponent is True
-    assert component_a_builder.manager_name == "/container"
-    assert component_b_builder.isComponent is True
-    assert component_b_builder.manager_name == "/container"
+    assert manager_builder.isComponentManager is False
+    assert not hasattr(manager_builder, "components_list")
 
 
 def test_match_token_types_returns_false_for_malformed_builder_entries():

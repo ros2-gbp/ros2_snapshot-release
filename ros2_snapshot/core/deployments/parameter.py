@@ -29,31 +29,12 @@ class Parameter(_EntityMetamodel):
     node: Optional[str] = None
     description: Optional[str] = None
 
-    def __init__(self, **kwargs):
-        """Initialize the Nodelet metamodel."""
-        super().__init__(**kwargs)
-        self.value_type = kwargs.get("value_type", None)
-        self.value = kwargs.get("value", None)
-        self.node = kwargs.get("node", None)
-        self.description = kwargs.get("description", None)
-
 
 class ParameterBank(_BankMetamodel):
     """Metamodel for Bank of ROS Parameters."""
 
     yaml_tag: ClassVar[str] = "!ParameterBank"
     HUMAN_OUTPUT_NAME = "Parameters:"
-
-    def __init__(self, **kwargs):
-        """
-        Construct a new instance of the ParameterBank Metamodel from keyword arguments.
-
-        :param kwargs: the keyword arguments
-        :type kwargs: dict{str: str}
-        :return: the constructed Bank Metamodel
-        :rtype: ActionBank
-        """
-        super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """

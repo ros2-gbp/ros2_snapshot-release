@@ -22,19 +22,13 @@ information for the purpose of extracting metamodel instances
 """
 
 from ros2_snapshot.core.metamodels import Topic
+from ros2_snapshot.core.base_metamodel import ValidationError
 from ros2_snapshot.core.utilities import filters
 from ros2_snapshot.core.utilities.logger import Logger, LoggerLevel
 
-from pydantic.error_wrappers import ValidationError
-
-try:
-    from rclpy.endpoint_info import EndpointTypeEnum
-except ImportError:
-    # Fall back to the older location of EndpointTypeEnum in rclpy.topic_endpoint_info
-    from rclpy.topic_endpoint_info import TopicEndpointTypeEnum as EndpointTypeEnum
-
-
 from ros2_snapshot.snapshot.builders.base_builders import _EntityBuilder
+
+_UNSET = object()
 
 
 class TopicBuilder(_EntityBuilder):
@@ -62,7 +56,8 @@ class TopicBuilder(_EntityBuilder):
         self._qos_profiles = {}
         self._gid_information = {}
         self._topic_hashes = set()
-        self._endpoint_types = set()
+        self._topic_hash_cache = _UNSET
+        self._qos_profile_cache = _UNSET
 
     @staticmethod
     def _serialize_qos_profile(qos_profile):
@@ -79,17 +74,29 @@ class TopicBuilder(_EntityBuilder):
         }
 
     @staticmethod
-    def _format_endpoint_type(endpoint_type):
-        """Return a stable string representation for a topic endpoint type."""
-        if endpoint_type == EndpointTypeEnum.PUBLISHER:
-            return "PUBLISHER"
-        if endpoint_type == EndpointTypeEnum.SUBSCRIPTION:
-            return "SUBSCRIPTION"
-        if endpoint_type == EndpointTypeEnum.CLIENT:
-            return "CLIENT"
-        if endpoint_type == EndpointTypeEnum.SERVER:
-            return "SERVER"
-        return "UNKNOWN"
+    def _qos_profile_key(qos_profile):
+        """Return a QoS comparison key, ignoring endpoint-local queue depth."""
+        comparable_profile = dict(qos_profile)
+        comparable_profile.pop("depth", None)
+        return str(sorted(comparable_profile.items()))
+
+    @staticmethod
+    def _merge_qos_depth(existing_profile, qos_profile):
+        """Merge depth-only QoS differences into one profile."""
+        existing_depth = existing_profile["depth"]
+        new_depth = qos_profile["depth"]
+        if existing_depth == new_depth:
+            return existing_profile
+
+        if isinstance(existing_depth, list):
+            depths = set(existing_depth)
+        else:
+            depths = {existing_depth}
+        depths.add(new_depth)
+
+        merged_profile = dict(existing_profile)
+        merged_profile["depth"] = sorted(depths)
+        return merged_profile
 
     def _normalize_metadata_values(self, metadata_name, values):
         """Return a deterministic scalar metadata value or an explicit ambiguity marker."""
@@ -115,7 +122,10 @@ class TopicBuilder(_EntityBuilder):
         if not self._qos_profiles:
             return {}
 
-        profiles = [self._qos_profiles[key] for key in sorted(self._qos_profiles)]
+        profiles = sorted(
+            self._qos_profiles.values(),
+            key=lambda profile: str(sorted(profile.items())),
+        )
         if len(profiles) == 1:
             return profiles[0]
 
@@ -132,14 +142,22 @@ class TopicBuilder(_EntityBuilder):
         """Add verbose information to the topic_bank."""
         self._node_name = info.node_name
         qos_profile = self._serialize_qos_profile(info.qos_profile)
-        self._qos_profiles[str(sorted(qos_profile.items()))] = qos_profile
+        qos_profile_key = self._qos_profile_key(qos_profile)
+        existing_profile = self._qos_profiles.get(qos_profile_key)
+        if existing_profile is None:
+            self._qos_profiles[qos_profile_key] = qos_profile
+        else:
+            self._qos_profiles[qos_profile_key] = self._merge_qos_depth(
+                existing_profile, qos_profile
+            )
         self._gid_information = "".join(
             format(byte, "02x") for byte in info.endpoint_gid
         )
         gid_dict[info.node_name] = self._gid_information
         self.set_gid_dict(gid_dict)
-        self._endpoint_types.add(self._format_endpoint_type(info.endpoint_type))
         self._topic_hashes.add(str(info.topic_type_hash))
+        self._topic_hash_cache = _UNSET
+        self._qos_profile_cache = _UNSET
 
     def set_gid_dict(self, gid_dict):
         """Set GID information."""
@@ -148,7 +166,9 @@ class TopicBuilder(_EntityBuilder):
     @property
     def qos_profile(self):
         """Get QOS profile."""
-        return self._normalize_qos_profiles()
+        if self._qos_profile_cache is _UNSET:
+            self._qos_profile_cache = self._normalize_qos_profiles()
+        return self._qos_profile_cache
 
     @property
     def gid_information(self):
@@ -158,12 +178,11 @@ class TopicBuilder(_EntityBuilder):
     @property
     def topic_hash(self):
         """Get topic hash."""
-        return self._normalize_metadata_values("topic_hash", self._topic_hashes)
-
-    @property
-    def endpoint_type(self):
-        """Get endpoint type."""
-        return self._normalize_metadata_values("endpoint_type", self._endpoint_types)
+        if self._topic_hash_cache is _UNSET:
+            self._topic_hash_cache = self._normalize_metadata_values(
+                "topic_hash", self._topic_hashes
+            )
+        return self._topic_hash_cache
 
     @property
     def construct_type(self):
@@ -254,19 +273,16 @@ class TopicBuilder(_EntityBuilder):
                 publisher_node_names=self.publisher_node_names,
                 subscriber_node_names=self.subscriber_node_names,
                 qos_profile=self.qos_profile,
-                endpoint_type=self.endpoint_type,
                 topic_hash=self.topic_hash,
             )
             return topic_metamodel
         except ValidationError as exc:
-            print(
-                f"Topic builder extract_metamodel: Pydantic Validation Error :\n    {exc}",
-                flush=True,
-            )
-            print(f"    name:'{self.name}'")
-            print(f"    construct_type:'{self.construct_type}'")
-            print(f"    publisher_node_names:'{self.publisher_node_names}'")
-            print(
-                f"    subscriber_node_names:'{self.subscriber_node_names}'", flush=True
+            Logger.get_logger().log(
+                LoggerLevel.ERROR,
+                f"Topic builder extract_metamodel: Pydantic Validation Error:\n    {exc}\n"
+                f"    name:'{self.name}'\n"
+                f"    construct_type:'{self.construct_type}'\n"
+                f"    publisher_node_names:'{self.publisher_node_names}'\n"
+                f"    subscriber_node_names:'{self.subscriber_node_names}'",
             )
             raise exc
