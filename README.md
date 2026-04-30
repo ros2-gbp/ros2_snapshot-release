@@ -1,3 +1,26 @@
+## ros2_snapshot (jazzy) - 0.0.7-1
+
+The packages in the `ros2_snapshot` repository were released into the `jazzy` distro by running `/usr/bin/bloom-release --rosdistro jazzy --track jazzy ros2_snapshot --edit` on `Thu, 30 Apr 2026 03:26:54 -0000`
+
+The `ros2_snapshot` package was released.
+
+Version of package(s) in repository `ros2_snapshot`:
+
+- upstream repository: https://github.com/cnurobotics/ros2_snapshot.git
+- release repository: https://github.com/ros2-gbp/ros2_snapshot-release.git
+- rosdistro version: `0.0.2-1`
+- old version: `0.0.2-2`
+- new version: `0.0.7-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.2`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## ros2_snapshot (kilted) - 0.0.7-1
 
 The packages in the `ros2_snapshot` repository were released into the `kilted` distro by running `/usr/bin/bloom-release --rosdistro kilted --track kilted ros2_snapshot --edit` on `Thu, 30 Apr 2026 02:24:00 -0000`
