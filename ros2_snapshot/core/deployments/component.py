@@ -26,11 +26,6 @@ class Component(Node):
 
     manager_node_name: Optional[str] = None
 
-    def __init__(self, **kwargs):
-        """Initialize the Nodelet metamodel."""
-        super().__init__(**kwargs)
-        self.manager_node_name = kwargs.get("manager_node_name", None)
-
     def set_manager_node(self, node):
         """Set manager mode for component."""
         self.manager_node_name = node

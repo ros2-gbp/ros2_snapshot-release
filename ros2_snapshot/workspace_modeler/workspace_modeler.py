@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2026 Christopher Newport University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,7 +78,7 @@ class PackageModeler(object):
                     pkg.name: pkg for pkg in cache if pkg.is_installed
                 }
             except Exception as exc:  # noqa: B902
-                print(exc)
+                Logger.get_logger().log(LoggerLevel.WARNING, str(exc))
 
     @property
     def node_specification_bank(self):
@@ -202,9 +204,9 @@ class PackageModeler(object):
                         for dependency in root.findall(depend_type):
                             package_dependencies.append(dependency.text)
                     except Exception:  # noqa: B902
-                        print(
+                        Logger.get_logger().log(
+                            LoggerLevel.WARNING,
                             f"\x1b[91mDid not find '{depend_type}' in package definition!\x1b[0m",
-                            flush=True,
                         )
 
                 installed_version = self._get_installed_version(pkg_name)
@@ -218,10 +220,10 @@ class PackageModeler(object):
                 )
                 return package
             except ValueError as exc:
-                print(
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
                     f"\x1b[91mUnknown share path for '{pkg_name}' "
                     f"at '{share_path} - skip this package!\n    {type(exc)} {exc}\x1b[0m",
-                    flush=True,
                 )
                 return None
         except Exception as exc:  # noqa: B902
@@ -242,10 +244,10 @@ class PackageModeler(object):
             if len(node_names) > 0:
                 self._package_bank[pkg_name].update_attributes(nodes=node_names)
         except Exception as exc:  # noqa: B902
-            print(
+            Logger.get_logger().log(
+                LoggerLevel.ERROR,
                 f"\x1b[91mError searching library path for '{pkg_name}' "
                 f"at '{lib_path}!\n    {type(exc)} {exc}\x1b[0m",
-                flush=True,
             )
 
     def _collect_packages(self):
@@ -263,21 +265,28 @@ class PackageModeler(object):
 
         for pkg_name, pkg_path in ros_packages.items():
 
-            pkg_data = self._share_instance(pkg_name, pkg_path)
-            if pkg_data is not None:
-                self._num += 1
+            try:
+                pkg_data = self._share_instance(pkg_name, pkg_path)
+                if pkg_data is not None:
+                    self._num += 1
 
-                # Get executable data and parameters from lib path
-                self._lib_instance(pkg_name, pkg_path)
+                    # Get executable data and parameters from lib path
+                    self._lib_instance(pkg_name, pkg_path)
 
-                # Get package specs from share folder
-                self._collect_package_specs(
-                    pkg_name, pkg_data.share_path, pkg_data, None
+                    # Get package specs from share folder
+                    self._collect_package_specs(
+                        pkg_name, pkg_data.share_path, pkg_data, None
+                    )
+                    for key, value in data_counts.items():
+                        if isinstance(getattr(pkg_data, key), list):
+                            cnt = len(getattr(pkg_data, key))
+                            data_counts[key] += cnt
+            except FileNotFoundError as exc:
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
+                    f"Did not find expected path for '{pkg_name}' "
+                    f"at '{pkg_path}' - skipping package: {type(exc).__name__} {exc}",
                 )
-                for key, value in data_counts.items():
-                    if isinstance(getattr(pkg_data, key), list):
-                        cnt = len(getattr(pkg_data, key))
-                        data_counts[key] += cnt
 
     def _get_installed_version(self, pkg_name):
         """Get the installed version of package."""
@@ -428,10 +437,10 @@ class PackageModeler(object):
         )
 
         if ref_name in self._node_bank:
-            print(
+            Logger.get_logger().log(
+                LoggerLevel.WARNING,
                 f"\x1b[91m        Discovered duplicate node '{ref_name}' "
                 f"- overwriting data for now!\x1b[0m",
-                flush=True,
             )
 
         node = self._node_bank[ref_name]
@@ -482,13 +491,32 @@ class PackageModeler(object):
                 )
                 if os.path.islink(full_path):
                     resolved_path = self._resolve_symlink_path(full_path)
-                    self._collect_package_specs(
-                        pkg_name,
-                        resolved_path,
-                        pkg_data,
-                        child_link_path or full_path,
-                        _active_paths,
-                    )
+                    if not os.path.exists(resolved_path):
+                        Logger.get_logger().log(
+                            LoggerLevel.WARNING,
+                            f"Skipping missing symlink target '{resolved_path}' from '{full_path}'",
+                        )
+                        continue
+                    if os.path.isdir(resolved_path):
+                        self._collect_package_specs(
+                            pkg_name,
+                            resolved_path,
+                            pkg_data,
+                            child_link_path or full_path,
+                            _active_paths,
+                        )
+                    elif os.path.isfile(resolved_path):
+                        status = os.stat(resolved_path)
+                        mode = status.st_mode
+                        if mode & executable_flags:
+                            more_node_names = []
+                            self._update_node_data(
+                                pkg_name,
+                                more_node_names,
+                                resolved_path,
+                                child_link_path or full_path,
+                            )
+                            pkg_data.update_attributes(nodes=more_node_names)
 
                 elif os.path.isfile(full_path):
                     if child_name in [
@@ -579,9 +607,9 @@ class PackageModeler(object):
                     else:
                         # some other folder - keep going deeper
                         if child_name in ("hook"):
-                            print(
+                            Logger.get_logger().log(
+                                LoggerLevel.DEBUG,
                                 f"        skipping '{child_name}' from '{full_path}'",
-                                flush=True,
                             )
                         else:
                             self._collect_package_specs(
@@ -595,7 +623,9 @@ class PackageModeler(object):
         except NotADirectoryError:
             pass  # expected error
         except Exception as exc:  # noqa: B902
-            print(f"Error collecting package specs!\n    {exc}")
+            Logger.get_logger().log(
+                LoggerLevel.ERROR, f"Error collecting package specs!\n    {exc}"
+            )
             raise exc
         finally:
             _active_paths.remove(visit_key)
@@ -646,11 +676,15 @@ class PackageModeler(object):
                                     source=PackageModeler.source_name,
                                 )
                         except IOError as ex:
-                            print(" IOError reading spec:", type(ex), ex)
-                            print("   ", child_path)
+                            Logger.get_logger().log(
+                                LoggerLevel.ERROR,
+                                f"IOError reading spec: {type(ex)} {ex}\n    {child_path}",
+                            )
                         except Exception as ex:  # noqa: B902
-                            print(" Unknown error reading spec:", type(ex), ex)
-                            print("   ", child_path)
+                            Logger.get_logger().log(
+                                LoggerLevel.ERROR,
+                                f"Unknown error reading spec: {type(ex)} {ex}\n    {child_path}",
+                            )
                             raise ex
 
                 elif os.path.isdir(child_path):
@@ -704,12 +738,12 @@ class PackageModeler(object):
 
     def print_statistics(self):
         """Print statistics."""
-        print("------ Specifications ------")
+        Logger.get_logger().log(LoggerLevel.INFO, "------ Specifications ------")
         for bank_type in ROSModel.SPECIFICATION_TYPES:
             bank = self.ros_model[bank_type]
-            print(
+            Logger.get_logger().log(
+                LoggerLevel.INFO,
                 f"     {len(bank.keys):4d}  items in {ROSModel.BANK_TYPES_TO_OUTPUT_NAMES[bank_type]}",
-                flush=True,
             )
 
 
