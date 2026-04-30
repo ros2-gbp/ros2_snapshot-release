@@ -1,0 +1,12 @@
+Source: ros-jazzy-ros2-snapshot
+Section: misc
+Priority: optional
+Maintainer: CNU Robotics CHRISLab <robotics@cnu.edu>
+Build-Depends: debhelper (>= 9.0.0), python3-pytest <!nocheck>, ros-jazzy-demo-nodes-py <!nocheck>, ros-jazzy-ros-workspace, python3-all, python3-setuptools, dh-python
+Homepage: https://index.ros.org/p/ros2_snapshot/#jazzy
+Standards-Version: 3.9.2
+
+Package: ros-jazzy-ros2-snapshot
+Architecture: any
+Depends: ${python3:Depends}, ${misc:Depends}, graphviz, python3-graphviz, python3-psutil, python3-pydantic, python3-yaml, ros-jazzy-ament-index-python, ros-jazzy-rclpy, ros-jazzy-ros2cli, ros-jazzy-ros2component, ros-jazzy-ros2node, ros-jazzy-ros2param, ros-jazzy-ros2pkg, ros-jazzy-ros2service, ros-jazzy-std-srvs, ros-jazzy-ros-workspace
+Description: ROS2 Snapshot - contains workspace modeler and snapshot tools
