@@ -26,11 +26,6 @@ class ComponentManager(Node):
 
     components: Optional[List[str]] = None
 
-    def __init__(self, **kwargs):
-        """Initialize the Component Node metamodel."""
-        super().__init__(**kwargs)
-        self.components = kwargs.get("components", None)
-
     def add_components_list(self, comp_list):
         """
         Set our component list.

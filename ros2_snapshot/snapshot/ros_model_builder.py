@@ -35,16 +35,17 @@ class ROSModelBuilder:
     Allows extraction of a fully populated ROSModel.
     """
 
-    def __init__(self, topic_types):
+    def __init__(self, topic_types, processes=None):
         """
         Instantiate an instance of the ROSModelBuilder.
 
         :param topic_types: the collection or iterable of topic name,
             topic type pairs
         :type topic_types: list[tuple(str, str)]
+        :param processes: optional process metadata collected from snapshot remotes
         """
         self._bank_builders = {
-            BankType.NODE: NodeBankBuilder(),
+            BankType.NODE: NodeBankBuilder(processes),
             BankType.TOPIC: TopicBankBuilder(topic_types),
             BankType.ACTION: ActionBankBuilder(),
             BankType.SERVICE: ServiceBankBuilder(),

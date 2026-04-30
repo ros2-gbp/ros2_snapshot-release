@@ -28,15 +28,7 @@ class Topic(_EntityMetamodel):
     publisher_node_names: Optional[Union[Set[str], List[str]]] = None
     subscriber_node_names: Optional[Union[Set[str], List[str]]] = None
     qos_profile: Optional[Any] = None
-    endpoint_type: Optional[str] = None
     topic_hash: Optional[str] = None
-
-    def __init__(self, **kwargs):
-        """Initialize the Nodelet metamodel."""
-        super().__init__(**kwargs)
-        self.construct_type = kwargs.get("construct_type", None)
-        self.publisher_node_names = kwargs.get("publisher_node_names", None)
-        self.subscriber_node_names = kwargs.get("subscriber_node_names", None)
 
     def add_to_dot_graph(self, graph):
         """
@@ -59,17 +51,6 @@ class TopicBank(_BankMetamodel):
 
     yaml_tag: ClassVar[str] = "!TopicBank"
     HUMAN_OUTPUT_NAME = "Topics:"
-
-    def __init__(self, **kwargs):
-        """
-        Construct a new instance of the ServiceBank Metamodel from keyword arguments.
-
-        :param kwargs: the keyword arguments
-        :type kwargs: dict{str: str}
-        :return: the constructed Bank Metamodel
-        :rtype: ActionBank
-        """
-        super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """

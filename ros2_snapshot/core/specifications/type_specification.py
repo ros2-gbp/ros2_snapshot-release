@@ -39,24 +39,12 @@ class TypeSpecification(_EntityMetamodel):
     package: Optional[str] = None
     spec: Optional[Any] = None
 
-    def __init__(self, **kwargs):
-        """Initialize instance of TypeSpecification."""
-        super().__init__(**kwargs)
-        self.construct_type = kwargs.get("construct_type", None)
-        self.file_path = kwargs.get("file_path", None)
-        self.package = kwargs.get("package", None)
-        self.spec = kwargs.get("spec", None)
-
 
 class TypeSpecificationBank(_BankMetamodel):
     """Metamodel for Bank of ROS Message, Service, or Action Specifications."""
 
     yaml_tag: ClassVar[str] = "!TypeSpecBank"
     HUMAN_OUTPUT_NAME: ClassVar[str] = "TypeSpecifications:"
-
-    def __init__(self, **kwargs):
-        """Initialize instance of TypeSpecificationBank."""
-        return super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """
