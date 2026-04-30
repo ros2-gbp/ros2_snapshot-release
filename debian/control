@@ -1,0 +1,12 @@
+Source: ros-lyrical-ros2-snapshot
+Section: misc
+Priority: optional
+Maintainer: CNU Robotics CHRISLab <robotics@cnu.edu>
+Build-Depends: debhelper (>= 9.0.0), python3-pytest <!nocheck>, ros-lyrical-demo-nodes-py <!nocheck>, ros-lyrical-ros-workspace, python3-all, python3-setuptools, dh-python
+Homepage: https://index.ros.org/p/ros2_snapshot/#lyrical
+Standards-Version: 3.9.2
+
+Package: ros-lyrical-ros2-snapshot
+Architecture: any
+Depends: ${python3:Depends}, ${misc:Depends}, graphviz, python3-graphviz, python3-psutil, python3-pydantic, python3-yaml, ros-lyrical-ament-index-python, ros-lyrical-rclpy, ros-lyrical-ros2cli, ros-lyrical-ros2component, ros-lyrical-ros2node, ros-lyrical-ros2param, ros-lyrical-ros2pkg, ros-lyrical-ros2service, ros-lyrical-std-srvs, ros-lyrical-ros-workspace
+Description: ROS2 Snapshot - contains workspace modeler and snapshot tools
