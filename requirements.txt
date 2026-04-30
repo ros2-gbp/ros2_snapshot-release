@@ -1,7 +1,7 @@
 # ROS 2 Snapshot
 # NOTE: Python apt module may require sudo apt install python-apt
 graphviz >= 0.14
-pydantic >= 1.10.12
+pydantic >= 1.10.17, < 3
 psutil >= 5.0
 pytest >= 7.0
 PyYAML >= 5.3
