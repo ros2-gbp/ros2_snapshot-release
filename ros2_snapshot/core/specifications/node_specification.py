@@ -35,36 +35,12 @@ class NodeSpecification(_EntityMetamodel):
     services_provided: Optional[Union[List[str], Dict[str, str]]] = None
     validated: bool = False
 
-    def __init__(self, **kwargs):
-        """Initialize the Node specification."""
-        super().__init__(**kwargs)
-        self.action_clients = kwargs.get("action_clients", None)
-        self.action_servers = kwargs.get("action_servers", None)
-        self.file_path = kwargs.get("file_path", None)
-        self.package = kwargs.get("package", None)
-        self.parameters = kwargs.get("parameters", None)
-        self.published_topics = kwargs.get("published_topics", None)
-        self.subscribed_topics = kwargs.get("subscribed_topics", None)
-        self.services_provided = kwargs.get("services_provided", None)
-        self.validated = kwargs.get("validated", False)
-
 
 class NodeSpecificationBank(_BankMetamodel):
     """Metamodel for Bank of ROS Node specifications."""
 
     yaml_tag: ClassVar[str] = "!NodeSpecBank"
     HUMAN_OUTPUT_NAME: ClassVar[str] = "NodeSpecs:"
-
-    def __init__(self, **kwargs):
-        """
-        Construct a new instance of the Bank Metamodel from keyword arguments.
-
-        :param kwargs: the keyword arguments
-        :type kwargs: dict{str: str}
-        :return: the constructed Bank Metamodel
-        :rtype: NodeBankMetamodel
-        """
-        super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """
