@@ -38,26 +38,7 @@ class Node(_EntityMetamodel):
     published_topic_names: Optional[Union[List[str], Dict[str, str]]] = None
     subscribed_topic_names: Optional[Union[List[str], Dict[str, str]]] = None
     provided_services: Optional[Union[List[str], Dict[str, str]]] = None
-    parameter_names: Optional[List[str]]
-
-    def __init__(self, **kwargs):
-        """Initialize the Node metamodel."""
-        super().__init__(**kwargs)
-        self.node = kwargs.get("node", None)
-        self.namespace = kwargs.get("namespace", None)
-        self.executable_name = kwargs.get("executable_name", None)
-        self.executable_file = kwargs.get("executable_file", None)
-        self.cmdline = kwargs.get("cmdline", None)
-        self.num_threads = kwargs.get("num_threads", None)
-        self.cpu_percent = kwargs.get("cpu_percent", None)
-        self.memory_percent = kwargs.get("memory_percent", None)
-        self.memory_info = kwargs.get("memory_info", None)
-        self.action_servers = kwargs.get("action_servers", None)
-        self.action_clients = kwargs.get("action_clients", None)
-        self.published_topic_names = kwargs.get("published_topic_names", None)
-        self.subscribed_topic_names = kwargs.get("subscribed_topic_names", None)
-        self.provided_services = kwargs.get("provided_services", None)
-        self.parameter_names = kwargs.get("parameter_names", None)
+    parameter_names: Optional[List[str]] = None
 
     def add_to_dot_graph(self, graph):
         """
@@ -98,17 +79,6 @@ class NodeBank(_BankMetamodel):
 
     yaml_tag: ClassVar[str] = "!NodeBank"
     HUMAN_OUTPUT_NAME = "Nodes:"
-
-    def __init__(self, **kwargs):
-        """
-        Construct a new instance of the Bank Metamodel from keyword arguments.
-
-        :param kwargs: the keyword arguments
-        :type kwargs: dict{str: str}
-        :return: the constructed Bank Metamodel
-        :rtype: ActionBank
-        """
-        super().__init__(**kwargs)
 
     def _create_entity(self, name):
         """

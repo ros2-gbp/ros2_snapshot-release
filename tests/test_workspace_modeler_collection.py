@@ -264,6 +264,28 @@ def test_collect_packages_walks_package_prefixes_and_collects_artifacts(
     assert node_spec.file_path == str(lib_path / "demo_node")
 
 
+def test_collect_packages_skips_packages_with_missing_paths(monkeypatch, tmp_path):
+    package_modeler = make_package_modeler(installed_cache={})
+    package_spec = package_modeler.package_specification_bank["demo_pkg"]
+    package_spec.share_path = str(tmp_path / "missing_share")
+
+    monkeypatch.setattr(
+        workspace_modeler_module,
+        "get_packages_with_prefixes",
+        lambda: {"demo_pkg": str(tmp_path / "prefix")},
+    )
+    monkeypatch.setattr(
+        package_modeler,
+        "_share_instance",
+        lambda _pkg_name, _pkg_path: package_spec,
+    )
+
+    package_modeler._collect_packages()
+
+    assert package_modeler._num == 1
+    assert package_modeler.node_specification_bank.keys == []
+
+
 def test_share_instance_records_package_version_without_os_package_lookup(tmp_path):
     share_path = tmp_path / "prefix" / "share" / "demo_pkg"
     share_path.mkdir(parents=True)
