@@ -17,11 +17,6 @@ from types import SimpleNamespace
 
 import pytest
 
-try:
-    from rclpy.endpoint_info import EndpointTypeEnum
-except ImportError:
-    from rclpy.topic_endpoint_info import TopicEndpointTypeEnum as EndpointTypeEnum
-
 from ros2_snapshot.snapshot import snapshot as snapshot_module
 from ros2_snapshot.snapshot.ros_model_builder import ROSModelBuilder
 
@@ -34,7 +29,7 @@ def make_node(full_name):
     )
 
 
-def make_topic_endpoint(node_name, endpoint_type, endpoint_gid):
+def make_topic_endpoint(node_name, endpoint_gid):
     return SimpleNamespace(
         node_name=node_name,
         qos_profile=SimpleNamespace(
@@ -48,7 +43,6 @@ def make_topic_endpoint(node_name, endpoint_type, endpoint_gid):
             depth=10,
         ),
         endpoint_gid=endpoint_gid,
-        endpoint_type=endpoint_type,
         topic_type_hash="hash",
     )
 
@@ -67,7 +61,7 @@ class FakeGraphNode:
 
 def reset_filters(monkeypatch):
     monkeypatch.setattr(
-        snapshot_module.filters.NodeFilter, "BASE_EXCLUSIONS", {"/roslaunch"}
+        snapshot_module.filters.NodeFilter, "_runtime_exclusions", set()
     )
     monkeypatch.setattr(snapshot_module.filters.NodeFilter, "INSTANCE", None)
     monkeypatch.setattr(snapshot_module.filters.TopicFilter, "INSTANCE", None)
@@ -76,7 +70,7 @@ def reset_filters(monkeypatch):
 
 def patch_process_lookup(monkeypatch):
     monkeypatch.setattr(
-        "ros2_snapshot.snapshot.builders.node_builder.list_ros_like_processes",
+        "ros2_snapshot.snapshot.builders.node_bank_builder.list_ros_like_processes",
         lambda: [],
     )
     monkeypatch.setattr(
@@ -143,7 +137,6 @@ def test_collect_rosgraph_info_populates_banks_from_graph_data(monkeypatch):
             "/chatter": [
                 make_topic_endpoint(
                     "/talker",
-                    EndpointTypeEnum.PUBLISHER,
                     [1, 2, 3, 4],
                 )
             ]
@@ -152,7 +145,6 @@ def test_collect_rosgraph_info_populates_banks_from_graph_data(monkeypatch):
             "/chatter": [
                 make_topic_endpoint(
                     "/listener",
-                    EndpointTypeEnum.SUBSCRIPTION,
                     [5, 6, 7, 8],
                 )
             ]
@@ -243,7 +235,6 @@ def test_create_nodes_with_topics_uses_direct_node_for_verbose_topic_queries(
             "/chatter": [
                 make_topic_endpoint(
                     "/talker",
-                    EndpointTypeEnum.PUBLISHER,
                     [1, 2, 3, 4],
                 )
             ]
@@ -252,7 +243,6 @@ def test_create_nodes_with_topics_uses_direct_node_for_verbose_topic_queries(
             "/chatter": [
                 make_topic_endpoint(
                     "/listener",
-                    EndpointTypeEnum.SUBSCRIPTION,
                     [5, 6, 7, 8],
                 )
             ]
@@ -284,7 +274,6 @@ def test_create_nodes_with_topics_uses_direct_node_for_verbose_topic_queries(
     topic_builder = ros_snapshot.topic_bank["/chatter"]
     assert topic_builder.publisher_node_names == ["/talker"]
     assert topic_builder.subscriber_node_names == ["/listener"]
-    assert topic_builder.endpoint_type == "[multiple] PUBLISHER | SUBSCRIPTION"
 
 
 def test_snapshot_happy_path_extracts_deployment_model(monkeypatch):
@@ -306,7 +295,6 @@ def test_snapshot_happy_path_extracts_deployment_model(monkeypatch):
             "/chatter": [
                 make_topic_endpoint(
                     "/talker",
-                    EndpointTypeEnum.PUBLISHER,
                     [1, 2, 3, 4],
                 )
             ]
@@ -315,7 +303,6 @@ def test_snapshot_happy_path_extracts_deployment_model(monkeypatch):
             "/chatter": [
                 make_topic_endpoint(
                     "/listener",
-                    EndpointTypeEnum.SUBSCRIPTION,
                     [5, 6, 7, 8],
                 )
             ]

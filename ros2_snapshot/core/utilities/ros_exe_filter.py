@@ -14,10 +14,15 @@
 
 """Process system processes looking for ROS-like instances (h/t ChatGPT)."""
 
+import ipaddress
+import os
 import re
+import socket
 import time
 
 import psutil
+
+from ros2_snapshot.core.utilities.logger import Logger, LoggerLevel
 
 # --- Heuristics you can tweak ----------------------------------------------
 
@@ -121,6 +126,23 @@ ATTRS = [
     "memory_percent",
 ]
 
+ROS_NETWORK_ENVIRONMENT_KEYS = (
+    "ROS_DOMAIN_ID",
+    "RMW_IMPLEMENTATION",
+    "ROS_AUTOMATIC_DISCOVERY_RANGE",
+    "ROS_STATIC_PEERS",
+    "ROS_LOCALHOST_ONLY",
+    "ROS_DISCOVERY_SERVER",
+    "CYCLONEDDS_URI",
+    "FASTRTPS_DEFAULT_PROFILES_FILE",
+    "FASTDDS_DEFAULT_PROFILES_FILE",
+)
+
+MACHINE_ID_PATHS = (
+    "/etc/machine-id",
+    "/var/lib/dbus/machine-id",
+)
+
 
 def _safe_cmdline(p):
     try:
@@ -142,7 +164,7 @@ def looks_rosy(cmdline, exe, name):
     """Find processes that look 'ROS-like'."""
     hay = " ".join(cmdline).lower()
 
-    if "ros2_snapshot" in hay:
+    if "ros2_snapshot" in hay or "ros2-daemon" in hay:
         # print(f"\tSkipping ros2_snapshot in {cmdline}")
         return False, ""
 
@@ -157,7 +179,7 @@ def looks_rosy(cmdline, exe, name):
     if cmdline and ("python" in (cmdline[0].lower())):
         if "-m" in cmdline:
             return True, "python-module"
-        if any(h in hay for h in ROS_PATH_HINTS) or "site-packages" in hay:
+        if any(h in hay for h in ROS_PATH_HINTS):
             # could still be non-ROS python, but often ROS nodes are here
             return True, "python-path-hint"
 
@@ -233,7 +255,7 @@ def list_ros_like_processes():
             if item:
                 results.append(item)
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as exc:
-            print(exc)
+            Logger.get_logger().log(LoggerLevel.WARNING, str(exc))
             pass
 
     # Sort for readability: launch tools first, then by name
@@ -250,6 +272,149 @@ def list_ros_like_processes():
         )
 
     return sorted(results, key=key)
+
+
+def get_machine_id():
+    """Return a stable local machine identifier when the platform provides one."""
+    for path in MACHINE_ID_PATHS:
+        try:
+            with open(path, "r") as machine_id_file:
+                machine_id = machine_id_file.read().strip()
+        except OSError:
+            continue
+        if machine_id:
+            return machine_id, path
+    return None, None
+
+
+def _normalize_ip_address(address):
+    return address.split("%", 1)[0]
+
+
+def _ip_sort_key(address):
+    try:
+        parsed_address = ipaddress.ip_address(_normalize_ip_address(address))
+        return (parsed_address.version, str(parsed_address))
+    except ValueError:
+        return (99, address)
+
+
+def _is_machine_address(address):
+    try:
+        parsed_address = ipaddress.ip_address(_normalize_ip_address(address))
+        return not (
+            parsed_address.is_loopback
+            or parsed_address.is_link_local
+            or parsed_address.is_unspecified
+        )
+    except ValueError:
+        return False
+
+
+def _add_hostname_addresses(addresses, hostname):
+    try:
+        for family, _, _, _, sockaddr in socket.getaddrinfo(hostname, None):
+            if family in (socket.AF_INET, socket.AF_INET6):
+                addresses.add(_normalize_ip_address(sockaddr[0]))
+    except OSError:
+        pass
+
+    try:
+        addresses.add(_normalize_ip_address(socket.gethostbyname(hostname)))
+    except OSError:
+        pass
+
+
+def _add_interface_addresses(addresses):
+    try:
+        interface_addresses = psutil.net_if_addrs()
+    except (AttributeError, OSError):
+        return
+
+    for address_group in interface_addresses.values():
+        for address in address_group:
+            if address.family in (socket.AF_INET, socket.AF_INET6):
+                addresses.add(_normalize_ip_address(address.address))
+
+
+def get_ros_network_environment(environ=None):
+    """Return ROS/DDS environment variables that affect network discovery."""
+    environ = environ if environ is not None else os.environ
+    return {
+        key: environ[key] for key in ROS_NETWORK_ENVIRONMENT_KEYS if environ.get(key)
+    }
+
+
+def _read_env_referenced_file(value):
+    """Read a small local config file referenced by a ROS network env var."""
+    if value.startswith("file://"):
+        value = value[7:]
+    if "://" in value or not os.path.exists(value):
+        return ""
+    try:
+        with open(value, "r") as config_file:
+            return config_file.read(200000)
+    except OSError:
+        return ""
+
+
+def extract_ip_address_hints(ros_network_environment):
+    """Extract usable local-network IP hints from ROS/DDS environment values."""
+    values = []
+    for key, value in (ros_network_environment or {}).items():
+        values.append(value)
+        if key in (
+            "CYCLONEDDS_URI",
+            "FASTRTPS_DEFAULT_PROFILES_FILE",
+            "FASTDDS_DEFAULT_PROFILES_FILE",
+        ):
+            values.append(_read_env_referenced_file(value))
+
+    addresses = set()
+    for value in values:
+        for match in re.findall(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])", value):
+            if _is_machine_address(match):
+                addresses.add(match)
+    return sorted(addresses, key=_ip_sort_key)
+
+
+def _prefer_ip_address_hints(addresses, preferred_addresses):
+    preferred_addresses = preferred_addresses or []
+    if not preferred_addresses:
+        return addresses
+    preferred_subnets = {
+        _ipv4_subnet_key(address)
+        for address in preferred_addresses
+        if _ipv4_subnet_key(address)
+    }
+    return sorted(
+        addresses,
+        key=lambda address: (
+            address not in preferred_addresses,
+            _ipv4_subnet_key(address) not in preferred_subnets,
+            addresses.index(address),
+        ),
+    )
+
+
+def _ipv4_subnet_key(address):
+    try:
+        return ipaddress.ip_network(f"{address}/24", strict=False)
+    except ValueError:
+        return None
+
+
+def get_ip_addresses(hostname=None, preferred_addresses=None):
+    """Return non-loopback local IP addresses for machine identity."""
+    addresses = set()
+    _add_interface_addresses(addresses)
+    if hostname:
+        _add_hostname_addresses(addresses, hostname)
+    sorted_addresses = sorted(
+        [address for address in addresses if _is_machine_address(address)],
+        key=_ip_sort_key,
+    )
+    return _prefer_ip_address_hints(sorted_addresses, preferred_addresses)
 
 
 if __name__ == "__main__":
