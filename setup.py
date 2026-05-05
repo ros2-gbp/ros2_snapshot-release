@@ -15,38 +15,15 @@
 """Setup for ros2_snapshot tool."""
 
 import os
-from pathlib import Path
-import xml.etree.ElementTree as ET
 
 from setuptools import find_packages, setup
 
 
-def version_from_package_xml(package_xml: Path) -> str:
-    tree = ET.parse(package_xml)
-    root = tree.getroot()
-    ver = root.findtext("version")
-    if not ver:
-        raise RuntimeError(f"No <version> tag found in {package_xml}")
-    return ver.strip()
-
-
-def write_version_file(version: str, out_path: Path) -> None:
-    # Only rewrite if content changed (avoids dirtying git / timestamps unnecessarily)
-    content = version + "\n"
-    if out_path.exists() and out_path.read_text(encoding="utf-8") == content:
-        return
-    out_path.write_text(content, encoding="utf-8")
-
-
-HERE = Path(__file__).resolve().parent
 PACKAGE_NAME = "ros2_snapshot"
-VERSION = version_from_package_xml(HERE / "package.xml")
-
-write_version_file(VERSION, HERE / "VERSION")
 
 setup(
     name=PACKAGE_NAME,
-    version="0.0.6",
+    version="0.0.7",
     packages=find_packages(),
     data_files=[
         (
@@ -59,7 +36,7 @@ setup(
     install_requires=[
         "setuptools",
         "graphviz",
-        "pydantic",
+        "pydantic>=1.10.17,<3",
         "psutil",
         "PyYAML",
     ],
@@ -79,6 +56,7 @@ setup(
     license="Apache 2.0",
     entry_points={
         "console_scripts": [
+            "remote = ros2_snapshot.snapshot.snapshot_remote:main",
             "running = ros2_snapshot.snapshot.snapshot:main",
             "workspace = ros2_snapshot.workspace_modeler.workspace_modeler:main",
         ],

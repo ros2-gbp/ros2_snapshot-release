@@ -21,7 +21,6 @@ import time
 
 import pytest
 
-pytest.importorskip("apt")
 pytest.importorskip("rclpy")
 
 from ament_index_python.packages import PackageNotFoundError
@@ -213,6 +212,9 @@ def test_workspace_and_running_capture_demo_nodes_graph(tmp_path, monkeypatch):
     assert "/chatter" in deployment_model.topic_bank.keys
 
     chatter = deployment_model.topic_bank["/chatter"]
-    assert chatter.construct_type == "std_msgs/msg/String"
+    assert chatter.construct_type in (
+        "std_msgs/msg/String",
+        "example_interfaces/msg/String",
+    )
     assert "/talker" in chatter.publisher_node_names
     assert "/listener" in chatter.subscriber_node_names

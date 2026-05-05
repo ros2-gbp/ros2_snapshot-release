@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Copyright 2026 Christopher Newport University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +21,8 @@ Discovers the ROS Computation Graph and stores as a snapshot_modeling model
 """
 
 import argparse
+from collections import Counter
+import json
 import os
 import socket
 import subprocess
@@ -29,10 +33,9 @@ import traceback
 from ament_index_python.packages import get_package_share_directory
 
 from ros2_snapshot.core.ros_model import BankType, ROSModel
+from ros2_snapshot.core.base_metamodel import ValidationError
 from ros2_snapshot.core.utilities import filters
 from ros2_snapshot.core.utilities.logger import Logger, LoggerLevel
-
-from pydantic.error_wrappers import ValidationError
 
 from ros2cli.node.strategy import NodeStrategy
 
@@ -51,8 +54,8 @@ from ros2param.api import get_value
 
 import rclpy
 from rclpy.parameter_client import AsyncParameterClient
+from std_srvs.srv import Trigger
 
-from ros2_snapshot.snapshot.builders.node_builder import NodeBuilder
 from ros2_snapshot.snapshot.remapper_bank import RemapperBank
 from ros2_snapshot.snapshot.ros_model_builder import ROSModelBuilder
 
@@ -79,6 +82,35 @@ class ROSSnapshot:
         self._unmatched_nodes = []
 
     PARAMETER_SERVICE_TIMEOUT_SEC = 2.0
+    SNAPSHOT_REMOTE_SERVICE_TYPE = "std_srvs/srv/Trigger"
+    SNAPSHOT_REMOTE_SERVICE_SUFFIX = "/get_process_snapshot"
+    SNAPSHOT_REMOTE_TIMEOUT_SEC = 1.0
+    SNAPSHOT_REMOTE_NODE_NAME = "ros2_snapshot_remote"
+
+    @staticmethod
+    def _snapshot_remote_node_name(service_name):
+        """Return the node name that serves a snapshot-remote service."""
+        service_prefix = service_name[
+            : -len(ROSSnapshot.SNAPSHOT_REMOTE_SERVICE_SUFFIX)
+        ]
+        remote_suffix = f"/{ROSSnapshot.SNAPSHOT_REMOTE_NODE_NAME}"
+        if service_prefix.endswith(remote_suffix):
+            return service_prefix
+        if service_prefix == "":
+            return f"/{ROSSnapshot.SNAPSHOT_REMOTE_NODE_NAME}"
+        return f"{service_prefix}/{ROSSnapshot.SNAPSHOT_REMOTE_NODE_NAME}"
+
+    @staticmethod
+    def _snapshot_remote_machine_name(service_name, hostname):
+        """Return a stable machine key derived from the remote service namespace."""
+        service_prefix = service_name[
+            : -len(ROSSnapshot.SNAPSHOT_REMOTE_SERVICE_SUFFIX)
+        ]
+        suffix = f"/{ROSSnapshot.SNAPSHOT_REMOTE_NODE_NAME}"
+        if service_prefix.endswith(suffix):
+            service_prefix = service_prefix[: -len(suffix)]
+        machine_name = service_prefix.strip("/").replace("/", ":")
+        return machine_name or hostname
 
     @staticmethod
     def _get_direct_runtime_node(node):
@@ -91,6 +123,120 @@ class ROSSnapshot:
         """
         direct_node = getattr(node, "direct_node", None)
         return direct_node if direct_node is not None else node
+
+    def _discover_snapshot_remote_services(self, node):
+        """Return snapshot-remote services visible in the ROS graph."""
+        runtime_node = self._get_direct_runtime_node(node)
+        try:
+            services = runtime_node.get_service_names_and_types()
+        except Exception as exc:  # noqa: B902
+            Logger.get_logger().log(
+                LoggerLevel.WARNING,
+                f"Unable to discover snapshot remote services: {type(exc)} {exc}",
+            )
+            return []
+
+        remote_services = []
+        for service_name, service_types in services:
+            if not service_name.endswith(self.SNAPSHOT_REMOTE_SERVICE_SUFFIX):
+                continue
+            if self.SNAPSHOT_REMOTE_SERVICE_TYPE in service_types:
+                remote_services.append(service_name)
+                filters.NodeFilter.add_runtime_exclusion(
+                    self._snapshot_remote_node_name(service_name)
+                )
+        return sorted(remote_services)
+
+    def _call_snapshot_remote(self, node, service_name):
+        """Call one snapshot remote and return its process list."""
+        runtime_node = self._get_direct_runtime_node(node)
+        client = runtime_node.create_client(Trigger, service_name)
+        try:
+            if not client.wait_for_service(
+                timeout_sec=self.SNAPSHOT_REMOTE_TIMEOUT_SEC
+            ):
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
+                    f"Timed out waiting for snapshot remote service '{service_name}'",
+                )
+                return []
+
+            future = client.call_async(Trigger.Request())
+            rclpy.spin_until_future_complete(
+                runtime_node, future, timeout_sec=self.SNAPSHOT_REMOTE_TIMEOUT_SEC
+            )
+            if not future.done():
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
+                    f"Timed out calling snapshot remote service '{service_name}'",
+                )
+                return []
+
+            response = future.result()
+            if response is None or not response.success:
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
+                    f"Snapshot remote service '{service_name}' returned no data",
+                )
+                return []
+
+            payload = json.loads(response.message)
+            hostname = payload.get("hostname") or service_name.split("/")[1]
+            machine_id = payload.get("machine_id")
+            machine_id_source = payload.get("machine_id_source")
+            machine_name = self._snapshot_remote_machine_name(service_name, hostname)
+            ip_addresses = payload.get("ip_addresses") or []
+            ros_network_environment = payload.get("ros_network_environment") or {}
+            ros_network_address_hints = payload.get("ros_network_address_hints") or []
+            processes = payload.get("processes", [])
+            for proc in processes:
+                proc["machine"] = machine_name
+                proc["machine_hostname"] = proc.get("machine_hostname") or hostname
+                if machine_id:
+                    proc["machine_id"] = proc.get("machine_id") or machine_id
+                if machine_id_source:
+                    proc["machine_id_source"] = (
+                        proc.get("machine_id_source") or machine_id_source
+                    )
+                proc["machine_ip_addresses"] = (
+                    proc.get("machine_ip_addresses") or ip_addresses
+                )
+                if ros_network_environment:
+                    proc["machine_ros_network_environment"] = (
+                        proc.get("machine_ros_network_environment")
+                        or ros_network_environment
+                    )
+                proc["machine_ros_network_address_hints"] = (
+                    proc.get("machine_ros_network_address_hints")
+                    or ros_network_address_hints
+                )
+            return processes
+        except Exception as exc:  # noqa: B902
+            Logger.get_logger().log(
+                LoggerLevel.WARNING,
+                f"Failed to call snapshot remote service '{service_name}': {type(exc)} {exc}",
+            )
+            return []
+        finally:
+            destroy_client = getattr(runtime_node, "destroy_client", None)
+            if destroy_client is not None:
+                destroy_client(client)
+
+    def _collect_snapshot_remote_processes(self, node):
+        """Collect process snapshots from all visible snapshot remotes."""
+        remote_services = self._discover_snapshot_remote_services(node)
+        if not remote_services:
+            return None
+
+        processes = []
+        for service_name in remote_services:
+            processes.extend(self._call_snapshot_remote(node, service_name))
+
+        Logger.get_logger().log(
+            LoggerLevel.INFO,
+            f"Collected {len(processes)} processes from {len(remote_services)} snapshot remotes",
+        )
+        return processes
 
     @staticmethod
     def _normalize_service_type(service_name, service_types):
@@ -251,7 +397,7 @@ class ROSSnapshot:
 
         return not missing_spec
 
-    def collect_system_info(self, node, include_hidden_topics=True):
+    def collect_system_info(self, node):
         """
         Crawl the system and collects nodes, topics, actions, & services.
 
@@ -276,6 +422,10 @@ class ROSSnapshot:
 
             nodes_list.append(each_node)
 
+        self._log_duplicate_node_names(nodes_list)
+
+        for each_node in nodes_list:
+            node_name = each_node.full_name
             action_servers = get_action_server_info(
                 node=node, remote_node_name=node_name, include_hidden=True
             )
@@ -358,6 +508,22 @@ class ROSSnapshot:
 
         return (actions_dict, nodes_list, services_dict, topics_dict)
 
+    @staticmethod
+    def _log_duplicate_node_names(nodes):
+        """Log duplicate ROS node names before model builders collapse them."""
+        node_name_counts = Counter(node.full_name for node in nodes)
+        for node_name, count in sorted(node_name_counts.items()):
+            if count < 2:
+                continue
+            Logger.get_logger().log(
+                LoggerLevel.ERROR,
+                (
+                    f"Duplicate ROS node name discovered: '{node_name}' appears "
+                    f"{count} times. ROS 2 node names should be unique; snapshot "
+                    "will merge these into one model entry."
+                ),
+            )
+
     def snapshot(self):
         """
         Probe the ROS deployment to populate the ROSModel.
@@ -368,17 +534,16 @@ class ROSSnapshot:
         :rtype: bool
         """
         try:
-            NodeBuilder.reset_processes()
             with NodeStrategy(None) as node:
                 try:
-                    filters.NodeFilter.BASE_EXCLUSIONS.add(
+                    filters.NodeFilter.add_runtime_exclusion(
                         "/" + node.direct_node.get_name()
                     )  # Filter out this snapshot node
                 except Exception:  # noqa: B902
                     Logger.get_logger().log(LoggerLevel.INFO, "No DirectNode name")
 
                 try:
-                    filters.NodeFilter.BASE_EXCLUSIONS.add(
+                    filters.NodeFilter.add_runtime_exclusion(
                         "/" + node.daemon_node.get_name()
                     )  # Filter out this snapshot node
                 except Exception:  # noqa: B902
@@ -390,7 +555,8 @@ class ROSSnapshot:
                     "Getting system information from the ROS network ...",
                 )
 
-                system_info = self.collect_system_info(node, include_hidden_topics=True)
+                remote_processes = self._collect_snapshot_remote_processes(node)
+                system_info = self.collect_system_info(node)
                 Logger.get_logger().log(
                     LoggerLevel.DEBUG,
                     "Setting up ModelBuilder with topic information ...",
@@ -406,7 +572,9 @@ class ROSSnapshot:
                     else:
                         topics_list.append((topic_name, None))
 
-                self._ros_model_builder = ROSModelBuilder(topics_list)
+                self._ros_model_builder = ROSModelBuilder(
+                    topics_list, processes=remote_processes
+                )
                 Logger.get_logger().log(
                     LoggerLevel.DEBUG, "Collect ROS Computation Graph information..."
                 )
@@ -432,15 +600,14 @@ class ROSSnapshot:
             )
             return False
         except ValidationError as exc:
-            print(f"ROS Snapshot: Pydantic Validation Error :\n    {exc}", flush=True)
-            for error in exc.errors():
-                print(
-                    f"Loc: {error['loc']}, Msg: {error['msg']}, Type: {error['type']}",
-                    flush=True,
-                )
-            print(exc.json())
-
-            print(traceback.format_exc())
+            error_details = "\n".join(
+                f"  Loc: {e['loc']}, Msg: {e['msg']}, Type: {e['type']}"
+                for e in exc.errors()
+            )
+            Logger.get_logger().log(
+                LoggerLevel.ERROR,
+                f"ROS Snapshot: Pydantic Validation Error:\n{exc}\n{error_details}\n{traceback.format_exc()}",
+            )
             return False
         except SnapshotProcessingError as exc:
             Logger.get_logger().log(
@@ -514,8 +681,9 @@ class ROSSnapshot:
                                 target = os.readlink(file_name)
                                 try:
                                     node_spec_remap = node_remapper[target]
-                                    print(
-                                        f"   Using '{target}' executable file for symlink '{file_name}' ..."
+                                    Logger.get_logger().log(
+                                        LoggerLevel.DEBUG,
+                                        f"   Using '{target}' executable file for symlink '{file_name}' ...",
                                     )
                                     file_name = target
                                 except KeyError:
@@ -524,9 +692,10 @@ class ROSSnapshot:
                             node_spec_remap = node_remapper[file_name]
                         except KeyError:
                             # Failed to find a file name, so try executable name
-                            print(
+                            Logger.get_logger().log(
+                                LoggerLevel.DEBUG,
                                 f" failed  to match '{node_builder.name}' with file_name ='{file_name}'"
-                                f" try '{node_builder.executable_name}' ... "
+                                f" try '{node_builder.executable_name}' ... ",
                             )
                             try:
                                 node_spec_remap = node_remapper[
@@ -543,16 +712,18 @@ class ROSSnapshot:
                                     # temp saving that key
                                     for remap_key in node_remapper.keys:
                                         if executable_path in remap_key:
-                                            print(
-                                                f"found match with '{executable_path}' for '{remap_key}' ... "
+                                            Logger.get_logger().log(
+                                                LoggerLevel.DEBUG,
+                                                f"found match with '{executable_path}' for '{remap_key}' ...",
                                             )
                                             node_spec_remap = node_remapper[remap_key]
                                             break
                                 except KeyError:
                                     pass
                                 except Exception as exc:  # noqa: B902
-                                    print(
-                                        f"Exception for '{file_name}' : {cmdline}\n    {exc}"
+                                    Logger.get_logger().log(
+                                        LoggerLevel.ERROR,
+                                        f"Exception for '{file_name}' : {cmdline}\n    {exc}",
                                     )
                                     raise exc
 
@@ -819,8 +990,9 @@ class ROSSnapshot:
                     spec_data[next_token] = spec_type
                     used_keys.add(next_token)
             except Exception as exc:  # noqa: B902
-                print(exc)
-                print(traceback.format_exc(), flush=True)
+                Logger.get_logger().log(
+                    LoggerLevel.ERROR, f"{exc}\n{traceback.format_exc()}"
+                )
                 raise exc
 
     def _update_node_specification(self, node_spec, node_builder):
@@ -969,21 +1141,28 @@ class ROSSnapshot:
         :param: node object
         :type: StrategyNode
         """
+        runtime_node = self._get_direct_runtime_node(node)
         container_node_names = find_container_node_names(
-            node=node, node_names=get_node_names(node=node)
+            node=runtime_node, node_names=get_node_names(node=runtime_node)
         )
 
         # Set Node as ComponentManager
         for name in container_node_names:
             manager_name = name.full_name
             components_list = []
-            results = get_components_in_container(
-                node=node, remote_container_node_name=manager_name
+            success, result = get_components_in_container(
+                node=runtime_node, remote_container_node_name=manager_name
             )
+            if not success:
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
+                    f"Failed to collect components from '{manager_name}': {result}",
+                )
+                continue
 
             self.node_bank[manager_name].set_manager_yaml(True)
             # Set ComponentManager Nodes as Components
-            for component in results[1]:
+            for component in result:
                 self.node_bank[component.name].set_comp_yaml(True, manager_name)
                 components_list.append(component.name)
             # Adds list of component names to ComponentManagers
@@ -1102,34 +1281,33 @@ class ROSSnapshot:
             runtime_node = self._get_direct_runtime_node(node)
             client = AsyncParameterClient(runtime_node, node_name)
             if not client.wait_for_services(timeout_sec=timeout):
-                print(
-                    "Wait for service timed out waiting for "
-                    f"parameter services for node {node_name}",
-                    flush=True,
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
+                    f"Wait for service timed out waiting for parameter services for node {node_name}",
                 )
                 return None
 
             future = request_factory(client)
             rclpy.spin_until_future_complete(runtime_node, future, timeout_sec=timeout)
             if not future.done():
-                print(
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
                     f"Timeout occurred calling {action_description} for '{node_name}'!",
-                    flush=True,
                 )
                 return None
 
             response = future.result()
             if response is None:
-                print(
+                Logger.get_logger().log(
+                    LoggerLevel.ERROR,
                     f"Exception while calling service of node '{node_name}': {future.exception()}",
-                    flush=True,
                 )
                 return None
             return response
         except Exception:  # noqa: B902
-            print(
+            Logger.get_logger().log(
+                LoggerLevel.ERROR,
                 f"Exception in timed parameter service call '{action_description}' for '{node_name}'",
-                flush=True,
             )
             return None
 
@@ -1179,7 +1357,9 @@ class ROSSnapshot:
 
         :param node: StrategyNode Object
         """
-        print("Collecting parameter information ...", flush=True)
+        Logger.get_logger().log(
+            LoggerLevel.INFO, "Collecting parameter information ..."
+        )
         params = {}
 
         node_names = get_node_names(node=node, include_hidden_nodes=False)
@@ -1214,9 +1394,9 @@ class ROSSnapshot:
 
                 # requested parameter not set
                 if response is None or not response.values:
-                    print(
-                        f"'{node_name}' - Failed to retrieve some values.\n"
-                        "        Try one at a time ..."
+                    Logger.get_logger().log(
+                        LoggerLevel.WARNING,
+                        f"'{node_name}' - Failed to retrieve some values. Try one at a time ...",
                     )
                     values = []
                     for p in params:
@@ -1226,7 +1406,10 @@ class ROSSnapshot:
                             parameter_names=[p],
                         )
                         if response is None or not response.values:
-                            print(f"        '{p}' - Failed to retrieve parameter value")
+                            Logger.get_logger().log(
+                                LoggerLevel.WARNING,
+                                f"'{p}' - Failed to retrieve parameter value",
+                            )
                             values.append(None)
                         else:
                             values.append(get_value(parameter_value=response.values[0]))
@@ -1235,9 +1418,9 @@ class ROSSnapshot:
 
             parameter_values = get_parameter_values(node, node_name, response)
             if parameter_values is None:
-                print(
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
                     f"Failed to get_parameters for node '{node_name}'!",
-                    flush=True,
                 )
                 continue
 
@@ -1261,18 +1444,20 @@ class ROSSnapshot:
 
     def print_statistics(self):
         """Print statistics."""
-        print("     --- Specifications ---")
+        Logger.get_logger().log(LoggerLevel.INFO, "     --- Specifications ---")
         for bank_type in ROSModel.SPECIFICATION_TYPES:
             bank = self._ros_specification_model[bank_type]
-            print(
-                f"     {len(bank.keys):4d}  items in {ROSModel.BANK_TYPES_TO_OUTPUT_NAMES[bank_type]}"
+            Logger.get_logger().log(
+                LoggerLevel.INFO,
+                f"     {len(bank.keys):4d}  items in {ROSModel.BANK_TYPES_TO_OUTPUT_NAMES[bank_type]}",
             )
 
-        print("     --- Deployment ---")
+        Logger.get_logger().log(LoggerLevel.INFO, "     --- Deployment ---")
         for bank_type in ROSModel.DEPLOYMENT_TYPES:
             bank = self._ros_deployment_model[bank_type]
-            print(
-                f"     {len(bank.keys):4d} items in {ROSModel.BANK_TYPES_TO_OUTPUT_NAMES[bank_type]}"
+            Logger.get_logger().log(
+                LoggerLevel.INFO,
+                f"     {len(bank.keys):4d} items in {ROSModel.BANK_TYPES_TO_OUTPUT_NAMES[bank_type]}",
             )
 
     def find_unmatched_executables(self):
@@ -1284,7 +1469,7 @@ class ROSSnapshot:
         """
         possible_executable = []
 
-        for proc in NodeBuilder.get_processes().values():
+        for proc in self.node_bank.processes.values():
             if proc["assigned"] is None:
                 possible_executable.append(proc)
 
@@ -1292,39 +1477,33 @@ class ROSSnapshot:
 
     def print_unmatched(self):
         """Print unmatched nodes and executables if there are any."""
-        print()
-        print(30 * "=")
-        Logger.get_logger().log(
-            LoggerLevel.INFO,
-            "Matched Executables: ...",
-        )
+        Logger.get_logger().log(LoggerLevel.INFO, 30 * "=")
+        Logger.get_logger().log(LoggerLevel.INFO, "Matched Executables: ...")
 
-        for proc in NodeBuilder.get_processes().values():
+        for proc in self.node_bank.processes.values():
             if proc["assigned"] is not None:
-                print(
+                Logger.get_logger().log(
+                    LoggerLevel.INFO,
                     f"\t  - {proc['reason']} {proc['pid']} {proc['name']}"
-                    f" <{proc['assigned']}> {proc['exe']} {proc['cmdline']} "
+                    f" <{proc['assigned']}> {proc['exe']} {proc['cmdline']}",
                 )
 
         if self._unmatched_nodes:
             executables = ROSSnapshot.find_unmatched_executables(self)
 
-            Logger.get_logger().log(
-                LoggerLevel.WARNING,
-                "Unmatched nodes exist ...",
-            )
-
-            print("\tUnmatched Nodes:")
+            Logger.get_logger().log(LoggerLevel.WARNING, "Unmatched nodes exist ...")
+            Logger.get_logger().log(LoggerLevel.WARNING, "\tUnmatched Nodes:")
             for node in self._unmatched_nodes:
-                print(f"\t  - {node.node}")
+                Logger.get_logger().log(LoggerLevel.WARNING, f"\t  - {node.node}")
 
-            print("\tUnmatched Executables:")
+            Logger.get_logger().log(LoggerLevel.WARNING, "\tUnmatched Executables:")
             for proc in executables:
-                print(
-                    f"\t  - {proc['reason']} {proc['pid']} {proc['name']} {proc['exe']} {proc['cmdline']}"
+                Logger.get_logger().log(
+                    LoggerLevel.WARNING,
+                    f"\t  - {proc['reason']} {proc['pid']} {proc['name']} {proc['exe']} {proc['cmdline']}",
                 )
 
-        print(30 * "=", flush=True)
+        Logger.get_logger().log(LoggerLevel.INFO, 30 * "=")
 
 
 def get_options(argv):
@@ -1516,7 +1695,7 @@ def main(argv=None):
     options = get_options(argv)
 
     Logger.LEVEL = options.logger_threshold
-    filters.NodeFilter.BASE_EXCLUSIONS.add(options.name)
+    filters.NodeFilter.add_runtime_exclusion(options.name)
     filters.Filter.FILTER_OUT_DEBUG = True
     filters.Filter.FILTER_OUT_TF = False
 
@@ -1541,10 +1720,11 @@ def main(argv=None):
         Logger.get_logger().log(
             LoggerLevel.ERROR, "Failed to input existing specification model ..."
         )
-        print("     Run ros2_snapshot workspace to generate specification model")
-        print("        use -s or --spec-input option to set the input folder ")
-        print(
-            "        the input code will detect either json, yaml, or pickle file inputs."
+        Logger.get_logger().log(
+            LoggerLevel.ERROR,
+            "Run ros2_snapshot workspace to generate specification model\n"
+            "        use -s or --spec-input option to set the input folder\n"
+            "        the input code will detect either json, yaml, or pickle file inputs.",
         )
         sys.exit(-1)
     else:
